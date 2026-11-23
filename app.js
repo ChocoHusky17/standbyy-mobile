@@ -181,7 +181,7 @@ function renderList(){
     const list=h('div',{class:'list'});
     const net=h('div',{class:'note err',id:'neterr',style:'display:none'});
     root.replaceChildren(
-      h('div',{class:'bar'},h('h1',null,S.section==='mine'?'ข้อความของฉัน':'กล่องข้อความ',h('small',{id:'whoami'},(s.name||s.id)+' · v19')),h('button',{type:'button',id:'shiftbtn',onclick:toggleShift},'เวร'),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
+      h('div',{class:'bar'},h('h1',null,S.section==='mine'?'ข้อความของฉัน':'กล่องข้อความ',h('small',{id:'whoami'},(s.name||s.id)+' · v20')),h('button',{type:'button',id:'shiftbtn',onclick:toggleShift},'เวร'),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
       tabs,h('div',{class:'search'},search,wait),net,list);
     listEls={list,tabs,net};
   }
@@ -646,6 +646,7 @@ function openChatMenu(){
       if(!others.length)items.push(h('div',{class:'empty small'},'ไม่มีแอดมินคนอื่นที่เข้าเวรอยู่'));
       others.forEach(a=>items.push(btn(a.name,()=>run(()=>api('/v1/handoff',{id,owner:a.id}),'ส่งต่อให้ '+a.name+' แล้ว'))));
     }
+    items.push(btn('🧾 สร้างออเดอร์ร่างจากแชทนี้',()=>{overlay.remove();openDraftOrder()}));
     items.push(btn(c.action_required?'⚑ ยกเลิกธง "ต้องดำเนินการ"':'⚑ ติดธง "ต้องดำเนินการ"',()=>run(()=>api('/v1/action-required',{id,required:!c.action_required,version:c.action_version||1}))));
     if(Array.isArray(S.state.pinnedConversationIDs))items.push(btn(isPinned(c)?'📌 เลิกปักหมุด':'📌 ปักหมุดแชทนี้',()=>run(()=>rpc('inbox_set_chat_pin',{p_id:id,p_pinned:!isPinned(c)}))));
     if(c.line_chat_url&&/^https:\/\/chat\.line\.biz\//.test(c.line_chat_url))items.push(h('a',{class:'menuitem',href:c.line_chat_url,target:'_blank',rel:'noopener noreferrer'},'เปิดแชทใน LINE Official Account'));
@@ -887,16 +888,138 @@ function shippingBlock(d,redraw){
           toast(r.changes&&r.changes.length?'บันทึก '+r.changes.join(', ')+' แล้ว':'ไม่มีการเปลี่ยนแปลง');redraw();
         }catch(e){msg.textContent=e.message;msg.style.display='';btn.disabled=false}
       };
-      box.replaceChildren(h('b',null,'จัดส่งและหมายเหตุ'),
+      box.replaceChildren(...[h('b',null,'จัดส่งและหมายเหตุ'),
         info.shipping_method==='pending'?h('div',{class:'note'},'ยังไม่เลือกวิธีส่ง'):null,
         h('label',{class:'fld'},h('span',null,'วิธีจัดส่ง'),method),feeRow,
         h('label',{class:'fld'},h('span',null,'ที่อยู่จัดส่ง'),addr),
         h('label',{class:'chk'},save,' บันทึกเป็นที่อยู่ตั้งต้นของลูกค้าด้วย'),
         h('label',{class:'fld'},h('span',null,'เลขพัสดุ'),track),
-        h('label',{class:'fld'},h('span',null,'หมายเหตุภายใน'),note),msg,btn);
+        h('label',{class:'fld'},h('span',null,'หมายเหตุภายใน'),note),msg,btn].filter(Boolean));
     }catch(e){box.replaceChildren(h('b',null,'จัดส่งและหมายเหตุ'),h('div',{class:'note err'},e.message))}
   })();
   return box;
+}
+
+// ---- create an order draft from the chat (same rules as the Mac app; the server prices catalog lines)
+function todayInput(){return new Date().toLocaleDateString('en-CA',{timeZone:tz})}
+async function openDraftOrder(){
+  const chat=S.open,c=conv(chat);if(!c)return;
+  const lines=[];const requestID=uuid();
+  const layer=h('div',{class:'overlay viewer filelayer'});
+  const head=h('div',{class:'pickhead'},h('b',null,'สร้างออเดอร์ร่าง · '+(c.customer||'')),h('button',{type:'button',onclick:()=>layer.remove()},'✕'));
+  const body=h('div',{class:'ordersbody full'},h('div',{class:'empty'},'กำลังโหลดตารางสินค้า…'));
+  layer.append(head,body);document.body.append(layer);
+  let catalog,reasons=[];
+  try{catalog=await rpc('inbox_draft_catalog',{});reasons=((await rpc('inbox_quick_texts',{}).catch(()=>({}))).discount_reasons)||[]}
+  catch(e){body.replaceChildren(h('div',{class:'empty'},e.message));return}
+  const sizeSel=h('select',null,[h('option',{value:''},'เลือกสินค้า / ขนาด'),...catalog.map(z=>h('option',{value:z.id},z.product+' · '+z.size+' · '+money2(z.price)+' บาท'))]);
+  const qty=h('input',{type:'number',inputmode:'numeric',min:'1',max:'999',value:'1'});
+  const custom=h('input',{type:'checkbox'});
+  const cName=h('input',{type:'text',placeholder:'ชื่อสินค้า'}),cSize=h('input',{type:'text',placeholder:'ขนาด'}),cPrice=h('input',{type:'number',inputmode:'decimal',placeholder:'ราคาต่อชิ้น (บาท)'});
+  const customBox=h('div',{style:'display:none;gap:8px;flex-direction:column'},cName,cSize,cPrice);
+  custom.onchange=()=>{customBox.style.display=custom.checked?'flex':'none';sizeSel.style.display=custom.checked?'none':''};
+  const list=h('div',{class:'items'});
+  const totalEl=h('div',{class:'kv'});
+  const needed=h('input',{type:'date',min:todayInput()});
+  const ship=h('select',null,[['pending','รอคอนเฟิร์ม'],['ems','EMS'],['grab_normal','Grab (ร้านเรียก)'],['grab_from_customer','Grab (ลูกค้าเรียก)'],['pickup','รับที่ร้าน']].map(([v,t])=>h('option',{value:v},t)));
+  const note=h('textarea',{rows:3,placeholder:'เช่น รายละเอียดแบบ หรือสิ่งที่ต้องระวัง'});
+  const dType=h('select',null,[['none','ไม่มีส่วนลด'],['percent','ส่วนลด %'],['amount','ส่วนลดเป็นเงิน']].map(([v,t])=>h('option',{value:v},t)));
+  const dVal=h('input',{type:'number',inputmode:'decimal',placeholder:'ค่าส่วนลด'});
+  const dReason=h('input',{type:'text',placeholder:'เหตุผลส่วนลด',list:'dreasons'});
+  const dl=h('datalist',{id:'dreasons'},reasons.map(r=>h('option',{value:r})));
+  const err=h('div',{class:'note err',style:'display:none'});
+  const itemsTotal=()=>lines.reduce((n,l)=>n+l.price*l.quantity,0);
+  const redraw=()=>{
+    list.replaceChildren(...(lines.length?lines.map((l,i)=>h('div',{class:'item'},h('span',null,l.label+(l.custom?' (ขนาดพิเศษ)':'')+' × '+l.quantity),h('span',null,baht(l.price*l.quantity)+' ',h('button',{type:'button',class:'replybtn',onclick:()=>{lines.splice(i,1);redraw()}},'✕')))):[h('div',{class:'meta'},'ยังไม่มีรายการ')]));
+    totalEl.replaceChildren(h('span',null,'รวมก่อนส่วนลด'),h('b',null,baht(itemsTotal())));
+  };
+  const add=h('button',{type:'button',class:'sumbtn'},'เพิ่มรายการ');
+  add.onclick=()=>{
+    err.style.display='none';const q=Number(qty.value);
+    if(!Number.isInteger(q)||q<1||q>999){err.textContent='จำนวนต้องเป็นเลข 1-999';err.style.display='';return}
+    if(lines.length>=50){err.textContent='ใส่ได้ไม่เกิน 50 รายการ';err.style.display='';return}
+    if(custom.checked){const price=Number(cPrice.value);
+      if(!cName.value.trim()||!cSize.value.trim()||!(price>=0)||cPrice.value===''){err.textContent='กรอกชื่อสินค้า ขนาด และราคาให้ครบ';err.style.display='';return}
+      lines.push({custom:true,label:cName.value.trim()+' · '+cSize.value.trim(),price,quantity:q,payload:{product_name:cName.value.trim(),size_label:cSize.value.trim(),quantity:q,unit_price:price}});
+      cName.value=cSize.value=cPrice.value='';
+    }else{const z=catalog.find(x=>x.id===sizeSel.value);if(!z){err.textContent='เลือกสินค้าก่อน';err.style.display='';return}
+      lines.push({label:z.product+' · '+z.size,price:z.price,quantity:q,payload:{size_id:z.id,quantity:q}});sizeSel.value=''}
+    qty.value='1';redraw();
+  };
+  const save=h('button',{type:'button',class:'go'},'บันทึกร่าง');
+  save.onclick=async()=>{
+    err.style.display='none';
+    const fail=t=>{err.textContent=t;err.style.display='';save.disabled=false};
+    if(!lines.length)return fail('เพิ่มรายการสินค้าก่อน');
+    if(!needed.value)return fail('เลือกวันที่ลูกค้าต้องการใช้งาน');
+    const dv=Number(dVal.value||0),dt=dType.value;
+    if(dt!=='none'&&dv>0){if(dt==='percent'&&dv>100)return fail('ส่วนลดไม่เกิน 100%');if(!dReason.value.trim())return fail('ใส่เหตุผลส่วนลด')}
+    if(!confirm('บันทึกออเดอร์ร่างของ '+(c.customer||'ลูกค้า')+' ('+lines.length+' รายการ)?'))return;
+    save.disabled=true;
+    try{
+      const draft=await rpc('inbox_create_order_draft',{p_id:requestID,p_conversation:chat,p_needed:needed.value,p_shipping:ship.value,p_items:lines.map(l=>l.payload),p_note:note.value.trim()});
+      let extra='';
+      if(dt!=='none'&&dv>0){
+        try{const fresh=await rpc('inbox_order_detail',{p_order:draft.id});
+          const r=await rpc('inbox_set_order_discount',{p_order:draft.id,p_type:dt,p_value:dv,p_reason:dReason.value.trim(),p_expected_total:fresh.total});
+          if(r&&r.discount_needs_approval)extra=' (ส่วนลดรอเจ้าของร้านอนุมัติ)'}
+        catch(e){extra=' แต่ใส่ส่วนลดไม่สำเร็จ: '+e.message}
+      }
+      layer.remove();toast('บันทึกออเดอร์ '+draft.order_no+' แล้ว'+extra);openChatOrders();
+    }catch(e){fail(e.message)}
+  };
+  const fld=(t,el)=>h('label',{class:'fld'},h('span',null,t),el);
+  body.replaceChildren(
+    h('div',{class:'ocard'},h('b',null,'รายการสินค้า'),list,totalEl),
+    h('div',{class:'ocard'},h('b',null,'เพิ่มสินค้า'),sizeSel,customBox,h('label',{class:'chk'},custom,' ขนาดพิเศษ (กำหนดราคาเอง)'),fld('จำนวน',qty),add),
+    h('div',{class:'ocard'},h('b',null,'ส่วนลด'),dType,dVal,dReason,dl),
+    h('div',{class:'ocard'},h('b',null,'วันใช้งานและการจัดส่ง'),fld('วันที่ลูกค้าต้องการใช้งาน',needed),fld('รับสินค้า',ship)),
+    h('div',{class:'ocard'},h('b',null,'โน้ตออเดอร์'),note),
+    h('div',{class:'meta'},'ราคาเป็นราคาก่อนส่วนลดตามจำนวน ระบบคำนวณส่วนลดตามจำนวนเมื่อบันทึก วันผลิตเริ่มนับหลังยืนยันสั่งงาน'),
+    err,save);
+  redraw();
+}
+// ---- confirm an order from its chat (the server checks shift, ownership, chat version and lead time)
+async function confirmOrderSheet(d,redraw){
+  const chat=S.open,c=conv(chat);if(!c)return;
+  const body=h('div',{class:'ordersbody'},h('div',{class:'empty'},'กำลังตรวจแผนงาน…'));
+  const close=h('button',{type:'button'},'ปิด'),go=h('button',{type:'button',class:'go',disabled:true},'ยืนยันสั่งงาน');
+  const overlay=h('div',{class:'overlay'},h('div',{class:'sheet tall'},h('h2',null,'ยืนยันสั่งงาน '+d.order_no),body,h('div',{class:'actions'},close,go)));
+  close.onclick=()=>overlay.remove();document.body.append(overlay);
+  try{
+    const plan=await rpc('inbox_confirm_order_preview',{p_conversation:chat,p_order:d.id});
+    const rg=(a,b)=>a===b?dateTh(a):dateTh(a)+' – '+dateTh(b);
+    const kv=(k,v)=>h('div',{class:'kv'},h('span',null,k),h('b',null,v));
+    const msgs=((S.chat&&S.chat.messages)||[]).filter(m=>m.direction==='inbound'&&m.body&&m.body!=='ข้อความถูกยกเลิก').slice(-15).reverse();
+    const ev=h('select',null,[h('option',{value:''},'ไม่อ้างอิงข้อความ'),...msgs.map(m=>h('option',{value:m.id},hm(ts(m.created)||0)+' • '+String(m.body).slice(0,50)))]);
+    const risky=plan.lead_time_status!=='ok';
+    const ack=h('input',{type:'checkbox'});
+    const nodes=[kv('รายการสินค้า',plan.item_count+' รายการ'),kv('ยอดรวม',baht(plan.total)),kv('ผลิตเสร็จประมาณ',rg(plan.production_from,plan.production_to)),
+      kv('ส่งออก',rg(plan.ship_from,plan.ship_to)),kv('ถึงลูกค้าประมาณ',rg(plan.arrival_from,plan.arrival_to)),kv('วันที่ต้องการใช้งาน',dateTh(plan.needed_by)),
+      plan.shipping_pending?h('div',{class:'note'},'ยังไม่เลือกวิธีส่ง ระบบประเมินเวลาขนส่งแบบเผื่อไว้'):null,
+      risky?h('div',{class:'note err'},'อาจไม่ทันวันใช้งาน ('+plan.lead_time_status+')'):null,
+      risky?h('label',{class:'chk'},ack,' ประเมินงานเร่งแล้ว ยืนยันรับงานแม้อาจไม่ทันวันใช้งาน'):null,
+      h('label',{class:'fld'},h('span',null,'ข้อความที่ลูกค้ายืนยัน'),ev)];
+    if(!plan.can_confirm)nodes.push(h('div',{class:'note err'},plan.item_count===0?'เพิ่มรายการสินค้าในออเดอร์ก่อนยืนยัน':'ออเดอร์นี้ไม่ได้อยู่ในสถานะรอคอนเฟิร์ม'));
+    const msg=h('div',{class:'note err',style:'display:none'});nodes.push(msg);
+    body.replaceChildren(...nodes.filter(Boolean));go.disabled=!plan.can_confirm;
+    go.onclick=async()=>{
+      msg.style.display='none';
+      if(risky&&!ack.checked){msg.textContent='ติ๊กยืนยันรับงานเร่งก่อน';msg.style.display='';return}
+      go.disabled=close.disabled=true;
+      try{
+        let cur=conv(chat);
+        if(!(onDuty()&&cur.owner===S.session.id)){
+          if(cur.owner&&cur.owner!==S.session.id)throw new Error('แชทนี้เป็นของ '+adminName(cur.owner));
+          if(!confirm('ต้องเข้าเวรและรับแชทนี้ก่อนจึงยืนยันสั่งงานได้ ทำเลยไหม?')){go.disabled=close.disabled=false;return}
+          await api('/v1/prepare-reply',{id:chat,version:cur.version});await poll(true);cur=conv(chat);
+        }
+        const r=await rpc('inbox_confirm_order',{p_conversation:chat,p_order:d.id,p_chat_version:cur.version,p_evidence_message:ev.value||null,p_acknowledge_risk:!!ack.checked});
+        overlay.remove();toast(r.already?'ออเดอร์นี้ยืนยันไว้แล้ว':'ยืนยันสั่งงานแล้ว · ผลิตเสร็จประมาณ '+rg(r.production_from,r.production_to));
+        await poll(true);redraw();
+      }catch(e){msg.textContent=e.message;msg.style.display='';go.disabled=false;close.disabled=false}
+    };
+  }catch(e){body.replaceChildren(h('div',{class:'note err'},e.message))}
 }
 
 // ---- orders workspace (list, search, detail, status moves)
@@ -979,6 +1102,7 @@ async function openOrderDetail(id){
       if(d.ship_by_planned)info.push(['วันส่งของ (แผน)',dateTh(d.ship_by_planned)]);
       if(d.priority&&d.priority!=='normal')info.push(['ความสำคัญ',d.priority]);
       if(info.length)nodes.push(h('div',{class:'ocard'},info.map(([k,v])=>h('div',{class:'kv'},h('span',null,k),h('b',null,v)))));
+      if(o.fromChat&&d.status==='inquiry'&&S.chat)nodes.push(h('button',{type:'button',class:'sumbtn',onclick:()=>confirmOrderSheet(d,draw)},'✅ ยืนยันสั่งงาน…'));
       nodes.push(statusBlock(d,opt,draw));
       nodes.push(paymentBlock(d,draw));
       nodes.push(shippingBlock(d,draw));
