@@ -162,9 +162,11 @@ function goSection(k){
   if(k==='inbox'||k==='mine'){S.section=k;renderList();poll(true)}
   else if(k==='orders')openOrdersTab();
   else if(k==='team')openTeam();
+  else if(k==='catalog')openCatalog();
+  else if(k==='portfolio')openPortfolio();
   else openPlaceholder(k);
 }
-const PLACEHOLDER={catalog:['สินค้าและราคา','ดูสินค้าและราคามาตรฐาน'],portfolio:['คลังผลงาน','ดูรูปผลงานและส่งเข้าแชท'],settings:['ตั้งค่า','โปรไฟล์ เปลี่ยนรหัสผ่าน และตั้งค่าร้าน']};
+const PLACEHOLDER={settings:['ตั้งค่า','โปรไฟล์ เปลี่ยนรหัสผ่าน และตั้งค่าร้าน']};
 function openPlaceholder(k){
   S.ph=k;const [title,desc]=PLACEHOLDER[k]||[k,''];
   root.replaceChildren(h('div',{class:'bar'},h('h1',null,title)),menuTabs(k),h('div',{class:'empty'},desc+' — กำลังเตรียมบนมือถือ ใช้ในแอป Mac ไปก่อน'));
@@ -179,7 +181,7 @@ function renderList(){
     const list=h('div',{class:'list'});
     const net=h('div',{class:'note err',id:'neterr',style:'display:none'});
     root.replaceChildren(
-      h('div',{class:'bar'},h('h1',null,S.section==='mine'?'ข้อความของฉัน':'กล่องข้อความ',h('small',{id:'whoami'},(s.name||s.id)+' · v14')),h('button',{type:'button',id:'shiftbtn',onclick:toggleShift},'เวร'),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
+      h('div',{class:'bar'},h('h1',null,S.section==='mine'?'ข้อความของฉัน':'กล่องข้อความ',h('small',{id:'whoami'},(s.name||s.id)+' · v15')),h('button',{type:'button',id:'shiftbtn',onclick:toggleShift},'เวร'),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
       tabs,h('div',{class:'search'},search,wait),net,list);
     listEls={list,tabs,net};
   }
@@ -230,7 +232,8 @@ function buildChat(){
   const attach=h('button',{type:'button',class:'attach','aria-label':'ส่งรูป',onclick:()=>{if(!sendBlock()&&!S.sending)file.click()}},'📷');
   const quick=h('button',{type:'button',class:'attach','aria-label':'ข้อความด่วน',onclick:()=>{if(!sendBlock())openQuick()}},'⚡');
   const ai=h('button',{type:'button',class:'attach','aria-label':'ร่างคำตอบด้วย AI',onclick:()=>{if(!sendBlock())askAI()}},'✨');
-  const comp=h('div',{class:'composer'},attach,quick,ai,file,ta,send);
+  const gal=h('button',{type:'button',class:'attach','aria-label':'คลังผลงาน',onclick:()=>{if(!sendBlock())openPortfolio(true)}},'🖼️');
+  const comp=h('div',{class:'composer'},attach,gal,quick,ai,file,ta,send);
   S.chat.els={ta,send,msgs,note,comp,replybar:null,title:h('h1',null,c.customer||'แชท')};
   root.replaceChildren(h('div',{class:'bar'},h('button',{type:'button',class:'back','aria-label':'กลับ',onclick:closeChat},'‹'),S.chat.els.title,h('button',{type:'button',onclick:openOrders},'ออเดอร์'),h('button',{type:'button','aria-label':'เมนูแชท',onclick:openChatMenu},'⋯')),note,msgs,comp);
   refreshSend();
@@ -452,7 +455,7 @@ async function shrink(file){
   throw new Error('รูปใหญ่เกินไป ลองรูปอื่น');
 }
 function blobB64(blob){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]);r.onerror=()=>rej(new Error('อ่านรูปไม่ได้'));r.readAsDataURL(blob)})}
-async function askSendImage(file,ready){
+async function askSendImage(file,ready,after){
   const c=conv(S.open);if(!c||sendBlock()||S.sending)return;
   let blob;try{blob=ready?file:await shrink(file)}catch(e){noteChat(e.message);return}
   const url=URL.createObjectURL(blob),id=S.open,requestID=uuid();
@@ -467,7 +470,7 @@ async function askSendImage(file,ready){
       const cur=conv(id);
       const up=await api('/v1/line-image',{id,version:cur.version,image:await blobB64(blob),mobile:true});
       await doSend(id,null,requestID,up.mediaID);
-      close();toast('ส่งรูปแล้ว');await poll(true);if(S.chat)fetchNew();
+      close();toast('ส่งรูปแล้ว');if(after)after();await poll(true);if(S.chat)fetchNew();
     }catch(err){close();noteChat(err.message||'ส่งรูปไม่สำเร็จ')}
     finally{S.sending=false;refreshSend()}
   };
@@ -736,6 +739,65 @@ function openDetails(){
     }catch(e){toast(e.message);save.disabled=close.disabled=false}
   };
   document.body.append(overlay);
+}
+
+// ---- สินค้าและราคา (read only; the prices live in the shop database)
+async function openCatalog(){
+  S.ph='catalog';
+  const body=h('div',{class:'ordersbody full'},h('div',{class:'empty'},'กำลังโหลด…'));
+  root.replaceChildren(h('div',{class:'bar'},h('h1',null,'สินค้าและราคา')),menuTabs('catalog'),body);
+  try{
+    const c=await rpc('inbox_catalog',{});
+    if(S.ph!=='catalog')return;
+    const ruleText=r=>r.type==='unit_price_tier'&&r.unit_price!=null?r.min_qty+' ชิ้นขึ้นไป '+money2(r.unit_price)+' บาท/ชิ้น':(r.percent!=null?r.min_qty+' ชิ้นขึ้นไป ลด '+money2(r.percent)+'%':'');
+    const nodes=(c.types||[]).map(t=>h('div',{class:'ocard'},
+      h('div',{class:'otop'},h('b',null,t.name),t.design_included?h('span',{class:'chip'},'รวมออกแบบ'):null),
+      t.spec?h('div',{class:'meta'},t.spec):null,
+      h('div',{class:'items'},(t.sizes||[]).map(z=>h('div',{class:'item'},h('span',null,z.label),h('span',null,money2(z.price)+' บาท')))),
+      (t.rules&&t.rules.length)?h('div',{class:'meta'},t.rules.map(ruleText).filter(Boolean).join(' • ')+' (นับรวมทุกขนาดของสินค้านี้)'):null));
+    if(c.shipping&&c.shipping.length)nodes.push(h('div',{class:'ocard'},h('b',null,'ค่าจัดส่ง'),c.shipping.map(x=>h('div',{class:'kv'},h('span',null,x.label),h('b',null,x.fee==null?'ตามจริง':money2(x.fee)+' บาท')))));
+    body.replaceChildren(...(nodes.length?nodes:[h('div',{class:'empty'},'ยังไม่มีสินค้า')]));
+  }catch(e){body.replaceChildren(h('div',{class:'empty'},e.message))}
+}
+// ---- คลังผลงาน: browse, or pick a picture to send into the open chat (pick=true)
+function pubUrl(path){
+  if(typeof path!=='string'||!path)return null;
+  if(/^https:\/\//.test(path))return path;
+  if(path.startsWith('/')||path.includes('..'))return null;
+  return SB+'/storage/v1/object/public/portfolio/'+path.split('/').map(encodeURIComponent).join('/');
+}
+async function openPortfolio(pick){
+  const st={type:'all',tag:'all',lib:null};
+  const grid=h('div',{class:'pgrid'},h('div',{class:'empty'},'กำลังโหลด…'));
+  const chips=h('div',{class:'tabs scroll'});
+  let overlay=null;
+  if(pick){
+    overlay=h('div',{class:'overlay viewer filelayer'},h('div',{class:'pickhead'},h('b',null,'เลือกรูปส่งเข้าแชท'),h('button',{type:'button',onclick:()=>overlay.remove()},'✕')),chips,grid);
+    document.body.append(overlay);
+  }else{
+    S.ph='portfolio';
+    root.replaceChildren(h('div',{class:'bar'},h('h1',null,'คลังผลงาน')),menuTabs('portfolio'),chips,grid);
+  }
+  const draw=()=>{
+    const lib=st.lib;if(!lib)return;
+    chips.replaceChildren(...[['all','ทั้งหมด'],...lib.types.map(t=>[t.id,t.name])].map(([k,t])=>h('button',{type:'button',class:st.type===k?'on':'',onclick:()=>{st.type=k;draw()}},t)));
+    const items=lib.images.filter(i=>(st.type==='all'||i.product_type_id===st.type)&&pubUrl(i.thumb_url||i.file_url));
+    grid.replaceChildren(...(items.length?items.map(i=>{
+      const img=h('img',{src:pubUrl(i.thumb_url||i.file_url),alt:i.caption||i.type_name||'ผลงาน',loading:'lazy',referrerPolicy:'no-referrer'});
+      return h('button',{type:'button',class:'pcell',onclick:()=>pick?sendPortfolio(i,overlay):viewPic(pubUrl(i.file_url)||img.src)},img,h('span',null,i.caption||[i.type_name,i.size_label].filter(Boolean).join(' ')));
+    }):[h('div',{class:'empty'},'ไม่มีรูป')]));
+  };
+  try{st.lib=await rpc('inbox_portfolio',{});if(!pick&&S.ph!=='portfolio')return;draw()}
+  catch(e){grid.replaceChildren(h('div',{class:'empty'},e.message))}
+}
+async function sendPortfolio(item,overlay){
+  try{
+    const r=await fetch(pubUrl(item.file_url),{credentials:'omit',referrerPolicy:'no-referrer'});
+    if(!r.ok)throw new Error('โหลดรูปไม่ได้');
+    const blob=await r.blob();
+    overlay.remove();
+    await askSendImage(blob,false,()=>{rpc('inbox_portfolio_used',{p_ids:[item.id]}).catch(()=>{})});
+  }catch(e){toast(e.message||'ส่งรูปไม่ได้')}
 }
 
 // ---- orders workspace (list, search, detail, status moves)

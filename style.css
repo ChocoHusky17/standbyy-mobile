@@ -104,3 +104,11 @@ button{font:inherit;color:inherit}
 .menu button{display:flex;align-items:center;gap:4px}.tabs.menu{background:var(--surface)}
 .search{display:flex;gap:8px;align-items:center}.search input{flex:1;min-width:0}
 .waitbtn{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 12px;font-size:14px;color:var(--muted);flex-shrink:0}.waitbtn.on{background:var(--tint);border-color:var(--brand);color:var(--brand);font-weight:600}
+.pgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:10px;overflow-y:auto;flex:1;align-content:start;background:var(--surface)}
+.pcell{border:0;background:transparent;padding:0;text-align:left;display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
+.pcell img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px;background:var(--tint)}
+.pcell span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.filelayer .pgrid{background:var(--surface)}.filelayer{flex-direction:column}
+.pickhead{display:flex;justify-content:space-between;align-items:center;padding:calc(10px + var(--top)) 14px 10px;background:var(--brand);color:var(--cream)}
+.pickhead button{background:transparent;border:0;color:inherit;font-size:20px}
+.filelayer .tabs{flex-shrink:0}
