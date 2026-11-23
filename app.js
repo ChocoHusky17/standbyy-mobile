@@ -242,6 +242,7 @@ function goSection(k){
   else if(k==='team')openTeam();
   else if(k==='catalog')openCatalog();
   else if(k==='portfolio')openPortfolio();
+  else if(k==='settings')openSettings();
   else openPlaceholder(k);
 }
 const PLACEHOLDER={settings:['ตั้งค่า','โปรไฟล์ เปลี่ยนรหัสผ่าน และตั้งค่าร้าน']};
@@ -1191,6 +1192,45 @@ async function confirmOrderSheet(d,redraw){
       }catch(e){msg.textContent=e.message;msg.style.display='';go.disabled=false;close.disabled=false}
     };
   }catch(e){body.replaceChildren(h('div',{class:'note err'},e.message))}
+}
+
+// ---- ตั้งค่า: LINE message allowance (from LINE itself), notifications, account
+function apiGet(path){return authed(async()=>{
+  let r;try{r=await fetch(API+path,{headers:{Authorization:'Bearer '+S.session.token},cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer'})}
+  catch(e){throw new ApiError(0,'ติดต่อเซิร์ฟเวอร์ไม่ได้ ตรวจสอบอินเทอร์เน็ต')}
+  let d=null;try{d=await r.json()}catch(e){}
+  if(!r.ok)throw new ApiError(r.status,(d&&(d.message||d.error))||('ผิดพลาด ('+r.status+')'));
+  return d;
+})}
+function openSettings(){
+  S.ph='settings';
+  const quota=h('div',{class:'ocard'},h('b',null,'ข้อความ LINE เดือนนี้'),h('div',{class:'empty small'},'กำลังถาม LINE…'));
+  const loadQuota=async()=>{
+    quota.replaceChildren(h('b',null,'ข้อความ LINE เดือนนี้'),h('div',{class:'empty small'},'กำลังถาม LINE…'));
+    try{
+      const q=await apiGet('/v1/line/quota');
+      const nodes=[h('b',null,'ข้อความ LINE เดือนนี้')];
+      if(q.type==='limited'){
+        const pct=q.limit?Math.min(100,Math.round(q.used/q.limit*100)):100,left=Math.max(0,q.limit-q.used);
+        nodes.push(h('div',{class:'kv'},h('span',null,'ใช้ไป'),h('b',null,q.used.toLocaleString('en-US')+' / '+q.limit.toLocaleString('en-US'))),
+          h('div',{class:'qbar'},h('div',{style:'width:'+pct+'%'+(pct>=90?';background:var(--danger)':'')})),
+          h('div',{class:'kv'},h('span',null,'เหลือ'),h('b',null,left.toLocaleString('en-US')+' ข้อความ')));
+        if(left===0)nodes.push(h('div',{class:'note err'},'โควต้าเต็มแล้ว ส่งจากแอปไม่ได้จนถึงเดือนหน้าหรือจนกว่าจะอัปเกรดแพ็กเกจ ระหว่างนี้ตอบลูกค้าใน LINE OA Manager ได้'));
+        else if(pct>=90)nodes.push(h('div',{class:'note'},'ใกล้เต็มแล้ว'));
+      }else nodes.push(h('div',{class:'kv'},h('span',null,'ใช้ไป'),h('b',null,q.used.toLocaleString('en-US')+' ข้อความ (แพ็กเกจไม่จำกัด)')));
+      nodes.push(h('div',{class:'meta'},'ตัวเลขจาก LINE โดยตรง นับเฉพาะข้อความที่ส่งจากระบบ (ข้อความที่ตอบในหน้าแชทของ LINE OA Manager ไม่นับ)'),
+        h('button',{type:'button',class:'sumbtn',onclick:loadQuota},'ถามใหม่'));
+      quota.replaceChildren(...nodes);
+    }catch(e){quota.replaceChildren(h('b',null,'ข้อความ LINE เดือนนี้'),h('div',{class:'note err'},e.message),h('button',{type:'button',class:'sumbtn',onclick:loadQuota},'ลองใหม่'))}
+  };
+  const s=S.session;
+  root.replaceChildren(h('div',{class:'bar'},logoImg(),h('h1',null,'ตั้งค่า')),menuTabs('settings'),
+    h('div',{class:'ordersbody full'},quota,
+      h('div',{class:'ocard'},h('b',null,'แจ้งเตือน'),h('button',{type:'button',class:'sumbtn',onclick:openPushSheet},'🔔 ตั้งค่าแจ้งเตือนบนเครื่องนี้')),
+      h('div',{class:'ocard'},h('b',null,'บัญชี'),h('div',{class:'kv'},h('span',null,'ชื่อ'),h('b',null,s.name||s.id)),h('div',{class:'kv'},h('span',null,'เวอร์ชันแอป'),h('b',null,'v'+RUNNING)),
+        h('button',{type:'button',class:'menuitem danger',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออกจากระบบ')),
+      h('div',{class:'meta'},'โปรไฟล์ รหัสผ่าน ข้อมูลร้าน และแชทบอท ยังตั้งค่าในแอป Mac')));
+  loadQuota();
 }
 
 // ---- orders workspace (list, search, detail, status moves)
