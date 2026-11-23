@@ -145,3 +145,12 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .sysbanner.net{top:calc(8px + var(--top));background:var(--ink);color:var(--cream)}
 .list.pulling::before{content:'ปล่อยเพื่อรีเฟรช';display:block;text-align:center;color:var(--muted);font-size:13px;padding:8px}
 .newdiv{background:var(--brand);color:var(--cream);align-self:stretch;text-align:center;border-radius:6px;margin:10px 0}
+
+.brand{width:32px;height:32px;border-radius:8px;flex-shrink:0;background:var(--cream)}
+.bar .brand+h1{margin-left:-2px}
+.chatwrap{position:relative;flex:1;min-height:0;display:flex;flex-direction:column}
+.chatwrap .msgs{flex:1;min-height:0}
+.downbtn{position:absolute;right:14px;bottom:14px;width:48px;height:48px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--brand);font-size:22px;box-shadow:0 3px 12px rgba(0,0,0,.2);display:none;align-items:center;justify-content:center}
+.downbtn.show{display:flex}
+.dcount{position:absolute;top:-6px;right:-4px;background:var(--brand);color:var(--cream);border-radius:999px;font-size:12px;font-weight:700;min-width:20px;padding:1px 5px;text-align:center}
+.dcount:empty{display:none}

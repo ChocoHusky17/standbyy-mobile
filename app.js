@@ -70,6 +70,7 @@ function logoutNow(expired){
 
 let S_failCount=0;
 
+function logoImg(){return h('img',{class:'brand',src:'apple-touch-icon.png',alt:'Standby.y',width:32,height:32})}
 // ---- history: the phone's back button / edge swipe closes the top layer or screen
 const nav={stack:[],ignore:0,lock:false,pending:[],
   push(close,el){
@@ -160,14 +161,19 @@ async function poll(force){
 function notifJump(){
   if(!S.notifJump||!S.state)return;
   if(Date.now()-S.notifJump>20000){S.notifJump=0;return}
+  const want=S.notifChat;
+  if(want){
+    if(conv(want)){S.notifJump=0;S.notifChat='';if(S.open!==want){S.team=null;S.ord=null;S.ph=null;openChat(want)}}
+    return;
+  }
   S.notifJump=0;
   const me=S.session.id;
   const c=S.state.conversations.filter(x=>(x.unread_count||0)>0&&(!x.owner||x.owner===me));
   if(c.length===1&&S.open!==c[0].id){S.team=null;S.ord=null;S.ph=null;openChat(c[0].id)}
 }
 try{
-  if(location.search.includes('n=1'))S.notifJump=Date.now();
-  if('serviceWorker' in navigator)navigator.serviceWorker.addEventListener('message',e=>{if(e.data&&e.data.type==='notif'){S.notifJump=Date.now();if(S.session)poll(true)}});
+  if(location.search.includes('n=1')){S.notifJump=Date.now();const m=location.search.match(/[?&]chat=([^&]+)/);if(m)S.notifChat=decodeURIComponent(m[1])}
+  if('serviceWorker' in navigator)navigator.serviceWorker.addEventListener('message',e=>{if(e.data&&e.data.type==='notif'){S.notifJump=Date.now();S.notifChat=e.data.chat||'';if(S.session)poll(true)}});
 }catch(e){}
 function showNetErr(e){const n=document.getElementById('neterr');if(n)n.textContent=e.message}
 function totalUnread(){return S.state?S.state.conversations.reduce((n,c)=>n+(c.unread_count||0),0):0}
@@ -241,7 +247,7 @@ function goSection(k){
 const PLACEHOLDER={settings:['ตั้งค่า','โปรไฟล์ เปลี่ยนรหัสผ่าน และตั้งค่าร้าน']};
 function openPlaceholder(k){
   S.ph=k;const [title,desc]=PLACEHOLDER[k]||[k,''];
-  root.replaceChildren(h('div',{class:'bar'},h('h1',null,title)),menuTabs(k),h('div',{class:'empty'},desc+' — กำลังเตรียมบนมือถือ ใช้ในแอป Mac ไปก่อน'));
+  root.replaceChildren(h('div',{class:'bar'},logoImg(),h('h1',null,title)),menuTabs(k),h('div',{class:'empty'},desc+' — กำลังเตรียมบนมือถือ ใช้ในแอป Mac ไปก่อน'));
 }
 let listEls=null;
 function renderList(){
@@ -253,7 +259,7 @@ function renderList(){
     const list=h('div',{class:'list'});
     const net=h('div',{class:'note err',id:'neterr',style:'display:none'});
     root.replaceChildren(
-      h('div',{class:'bar'},h('h1',null,S.section==='mine'?'ข้อความของฉัน':'กล่องข้อความ',h('small',{id:'whoami'},(s.name||s.id)+' · v'+RUNNING)),h('button',{type:'button',id:'shiftbtn',onclick:toggleShift},'เวร'),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
+      h('div',{class:'bar'},logoImg(),h('h1',null,S.section==='mine'?'ข้อความของฉัน':'กล่องข้อความ',h('small',{id:'whoami'},(s.name||s.id)+' · v'+RUNNING)),h('button',{type:'button',id:'shiftbtn',onclick:toggleShift},'เวร'),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
       tabs,h('div',{class:'search'},search,wait),net,list);
     listEls={list,tabs,net};pullRefresh(list,()=>poll(true));
   }
@@ -325,7 +331,15 @@ function buildChat(){
   ta.value=loadDraft(S.open);
   ta.addEventListener('input',()=>saveDraft(S.open,ta.value));
   S.chat.els={ta,send,msgs,note,comp,replybar:null,title:h('h1',null,c.customer||'แชท')};
-  root.replaceChildren(h('div',{class:'bar'},h('button',{type:'button',class:'back','aria-label':'กลับ',onclick:closeChat},'‹'),S.chat.els.title,h('button',{type:'button',onclick:openChatOrders},'ออเดอร์'),h('button',{type:'button','aria-label':'เมนูแชท',onclick:openChatMenu},'⋯')),note,msgs,comp);
+  const down=h('button',{type:'button',class:'downbtn','aria-label':'เลื่อนลงข้อความล่าสุด',onclick:()=>{msgs.scrollTo({top:msgs.scrollHeight,behavior:'smooth'})}},'↓',h('span',{class:'dcount'}));
+  S.chat.els.down=down;
+  const wrap=h('div',{class:'chatwrap'},msgs,down);
+  msgs.addEventListener('scroll',()=>{
+    const far=msgs.scrollHeight-msgs.scrollTop-msgs.clientHeight>240;
+    down.classList.toggle('show',far);
+    if(!far&&S.chat){S.chat.newBelow=0;down.querySelector('.dcount').textContent=''}
+  },{passive:true});
+  root.replaceChildren(h('div',{class:'bar'},h('button',{type:'button',class:'back','aria-label':'กลับ',onclick:closeChat},'‹'),S.chat.els.title,h('button',{type:'button',onclick:openChatOrders},'ออเดอร์'),h('button',{type:'button','aria-label':'เมนูแชท',onclick:openChatMenu},'⋯')),note,wrap,comp);
   refreshSend();
   if(ta.value){ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,120)+'px'}
 }
@@ -458,7 +472,9 @@ function drawMessages(toBottom){
   if(ch.keepOffset){box.scrollTop=box.scrollHeight-prevH+prevTop;ch.keepOffset=false}
   else if(toBottom&&ch.unreadFromId&&!ch.jumped&&document.getElementById('newdiv')){ch.jumped=true;box.scrollTop=Math.max(0,document.getElementById('newdiv').offsetTop-70)}
   else if(toBottom||nearBottom)box.scrollTop=box.scrollHeight;
-  else box.scrollTop=prevTop;
+  else{box.scrollTop=prevTop;
+    if(ch.lastCount!=null&&ch.messages.length>ch.lastCount&&ch.els&&ch.els.down){ch.newBelow=(ch.newBelow||0)+(ch.messages.length-ch.lastCount);const dc=ch.els.down.querySelector('.dcount');dc.textContent=String(ch.newBelow);ch.els.down.classList.add('show')}}
+  ch.lastCount=ch.messages.length;
 }
 async function loadOlder(){
   const ch=S.chat;if(!ch||!ch.messages.length)return;
@@ -804,7 +820,7 @@ async function askAI(){
 async function openCatalog(){
   S.ph='catalog';
   const body=h('div',{class:'ordersbody full'},h('div',{class:'empty'},'กำลังโหลด…'));
-  root.replaceChildren(h('div',{class:'bar'},h('h1',null,'สินค้าและราคา')),menuTabs('catalog'),body);
+  root.replaceChildren(h('div',{class:'bar'},logoImg(),h('h1',null,'สินค้าและราคา')),menuTabs('catalog'),body);
   try{
     const c=await rpc('inbox_catalog',{});
     if(S.ph!=='catalog')return;
@@ -843,7 +859,7 @@ async function openPortfolio(pick){
     document.body.append(overlay);
   }else{
     S.ph='portfolio';
-    root.replaceChildren(h('div',{class:'bar'},h('h1',null,'คลังผลงาน')),menuTabs('portfolio'),chips,grid);
+    root.replaceChildren(h('div',{class:'bar'},logoImg(),h('h1',null,'คลังผลงาน')),menuTabs('portfolio'),chips,grid);
   }
   const KINDS=[['portfolio','ผลงานจริง'],['price_sheet','ตารางราคา'],['size_guide','เทียบขนาด']];
   const draw=()=>{
@@ -1167,7 +1183,7 @@ function drawOrders(){
   const search=h('input',{type:'search',placeholder:'ค้นหาเลขออเดอร์ ชื่อ หรือเบอร์โทร',value:o.q,oninput:e=>{o.q=e.target.value;clearTimeout(o.timer);o.timer=setTimeout(()=>loadOrders(true),400)}});
   const chips=h('div',{class:'tabs scroll'},ORDER_FILTERS.map(([k,t])=>h('button',{type:'button',class:o.status===k?'on':'','data-k':k,onclick:()=>{o.status=k;for(const b of chips.children)b.classList.toggle('on',b.dataset.k===k);loadOrders(true)}},t)));
   o.listEl=h('div',{class:'list'});pullRefresh(o.listEl,()=>loadOrders(true));
-  root.replaceChildren(h('div',{class:'bar'},h('h1',null,'รายการออเดอร์',h('small',{id:'ordcount'},''))),menuTabs('orders'),
+  root.replaceChildren(h('div',{class:'bar'},logoImg(),h('h1',null,'รายการออเดอร์',h('small',{id:'ordcount'},''))),menuTabs('orders'),
     chips,h('div',{class:'search'},search),o.listEl);
   fillOrders();
 }
@@ -1311,7 +1327,7 @@ function openTeam(){
   const msgs=h('div',{class:'msgs'});
   const note=h('div',{class:'note err',style:'display:none'});
   S.team.els={ta,send,msgs,note};
-  root.replaceChildren(h('div',{class:'bar'},h('h1',null,'ทีมแอดมิน')),menuTabs('team'),note,msgs,h('div',{class:'composer'},ta,send));
+  root.replaceChildren(h('div',{class:'bar'},logoImg(),h('h1',null,'ทีมแอดมิน')),menuTabs('team'),note,msgs,h('div',{class:'composer'},ta,send));
   listEls=null;updateTeam(true);
 }
 function closeTeam(){S.team=null;renderList();poll(true)}
