@@ -181,7 +181,7 @@ function renderList(){
     const list=h('div',{class:'list'});
     const net=h('div',{class:'note err',id:'neterr',style:'display:none'});
     root.replaceChildren(
-      h('div',{class:'bar'},h('h1',null,S.section==='mine'?'ข้อความของฉัน':'กล่องข้อความ',h('small',{id:'whoami'},(s.name||s.id)+' · v16')),h('button',{type:'button',id:'shiftbtn',onclick:toggleShift},'เวร'),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
+      h('div',{class:'bar'},h('h1',null,S.section==='mine'?'ข้อความของฉัน':'กล่องข้อความ',h('small',{id:'whoami'},(s.name||s.id)+' · v17')),h('button',{type:'button',id:'shiftbtn',onclick:toggleShift},'เวร'),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
       tabs,h('div',{class:'search'},search,wait),net,list);
     listEls={list,tabs,net};
   }
@@ -827,6 +827,112 @@ async function sendPortfolio(item,overlay){
   }catch(e){toast(e.message||'ส่งรูปไม่ได้')}
 }
 
+// ---- payment (slip required) and shipping for an order
+async function uploadSlip(orderId,blob){
+  const path=orderId.toLowerCase()+'/slip-'+uuid()+'.jpg';
+  await authed(async()=>{
+    const r=await fetch(SB+'/storage/v1/object/attachments/'+path,{method:'POST',headers:{apikey:S.session.publicKey,Authorization:'Bearer '+S.session.token,'Content-Type':'image/jpeg','x-upsert':'false'},body:blob,credentials:'omit',referrerPolicy:'no-referrer'});
+    if(!r.ok)throw new ApiError(r.status,'อัปโหลดสลิปไม่สำเร็จ กรุณาลองใหม่');
+  });
+  return path;
+}
+function paymentBlock(d,redraw){
+  const box=h('div',{class:'ocard'},h('b',null,'การชำระเงิน'),h('div',{class:'empty small'},'กำลังโหลด…'));
+  (async()=>{
+    try{
+      const info=await rpc('inbox_order_payment',{p_order:d.id});
+      const rows=[h('b',null,'การชำระเงิน'),h('div',{class:'kv'},h('span',null,'สถานะ'),h('b',null,PAY[info.payment_status]||'ยังไม่ชำระ')),
+        h('div',{class:'kv'},h('span',null,'ยอดรวม'),h('b',null,baht(info.total)))];
+      if(info.deposit_amount)rows.push(h('div',{class:'kv'},h('span',null,'รับมัดจำแล้ว'),h('b',null,baht(info.deposit_amount))));
+      if(info.slips)rows.push(h('div',{class:'meta'},'สลิป '+info.slips+' ใบ'));
+      const allowed=info.status!=='cancelled'&&(info.status!=='done'||info.is_owner);
+      if(allowed&&info.payment_status!=='paid'){
+        if(info.payment_status==='unpaid')rows.push(h('button',{type:'button',class:'sumbtn',onclick:()=>paymentSheet(info,'deposit',redraw)},'รับมัดจำ…'));
+        rows.push(h('button',{type:'button',class:'sumbtn',onclick:()=>paymentSheet(info,'paid',redraw)},'บันทึกชำระครบ…'));
+      }
+      box.replaceChildren(...rows);
+    }catch(e){box.replaceChildren(h('b',null,'การชำระเงิน'),h('div',{class:'note err'},e.message))}
+  })();
+  return box;
+}
+function paymentSheet(info,mode,redraw){
+  const already=info.deposit_amount||0;
+  const amount=h('input',{type:'number',inputmode:'decimal',placeholder:'บาท',min:'1'});
+  const file=h('input',{type:'file',accept:'image/*',style:'display:none'});
+  const preview=h('img',{class:'pic',alt:'สลิป',style:'display:none;align-self:center;max-height:240px'});
+  const pick=h('button',{type:'button',class:'sumbtn'},'เลือกรูปสลิป (บังคับ)');
+  let slip=null;
+  pick.onclick=()=>file.click();
+  file.onchange=async()=>{const f=file.files[0];file.value='';if(!f)return;
+    try{slip=await shrink(f);preview.src=URL.createObjectURL(slip);preview.style.display='';pick.textContent='เปลี่ยนรูปสลิป';err.style.display='none'}
+    catch(e){err.textContent=e.message;err.style.display=''}};
+  const err=h('div',{class:'note err',style:'display:none'});
+  const go=h('button',{type:'button',class:'go'},'บันทึก'),cancel=h('button',{type:'button'},'ยกเลิก');
+  const quick=mode==='deposit'?h('div',{class:'tabs'},[0.3,0.5,1].map(r=>h('button',{type:'button',onclick:()=>{amount.value=Math.round(info.total*r)}},r===1?'เต็มจำนวน':Math.round(r*100)+'%'))):null;
+  const overlay=h('div',{class:'overlay'},h('div',{class:'sheet tall'},h('h2',null,(mode==='deposit'?'รับมัดจำ ':'บันทึกชำระครบ ')+info.order_no),
+    h('div',{class:'kv'},h('span',null,'ยอดรวมทั้งบิล'),h('b',null,baht(info.total))),
+    already?h('div',{class:'kv'},h('span',null,'รับมาแล้ว'),h('b',null,baht(already))):null,
+    mode==='paid'?h('div',{class:'kv'},h('span',null,'ยอดคงเหลือ'),h('b',null,baht(Math.max(0,info.total-already)))):null,
+    mode==='deposit'?h('label',{class:'fld'},h('span',null,'ยอดมัดจำ (บาท)'),amount):null,quick,
+    pick,file,preview,err,h('div',{class:'actions'},cancel,go)));
+  cancel.onclick=()=>overlay.remove();
+  go.onclick=async()=>{
+    err.style.display='none';
+    let dep=null;
+    if(mode==='deposit'){dep=Number(amount.value);if(!(dep>0&&dep<=info.total)){err.textContent='ยอดมัดจำต้องมากกว่า 0 และไม่เกินยอดรวม';err.style.display='';return}}
+    if(!slip){err.textContent='กรุณาเลือกรูปสลิปโอนเงิน';err.style.display='';return}
+    if(!confirm((mode==='deposit'?'บันทึกรับมัดจำ '+baht(dep):'บันทึกชำระครบ')+' ของ '+info.order_no+'?'))return;
+    go.disabled=cancel.disabled=true;
+    try{
+      const path=await uploadSlip(info.order_id,slip);
+      await rpc('inbox_set_order_payment',{p_order:info.order_id,p_status:mode,p_expected:info.payment_status,p_deposit_amount:dep,p_slip_path:path});
+      overlay.remove();toast('บันทึกการชำระเงินแล้ว');redraw();
+    }catch(e){err.textContent=e.message;err.style.display='';go.disabled=cancel.disabled=false}
+  };
+  document.body.append(overlay);
+}
+function shippingBlock(d,redraw){
+  const box=h('div',{class:'ocard'},h('b',null,'จัดส่งและหมายเหตุ'),h('div',{class:'empty small'},'กำลังโหลด…'));
+  (async()=>{
+    try{
+      const info=await rpc('inbox_order_shipping',{p_order:d.id});
+      if(info.status==='cancelled'){box.replaceChildren(h('b',null,'จัดส่งและหมายเหตุ'),h('div',{class:'meta'},'ออเดอร์ที่ยกเลิกแล้วแก้ไขไม่ได้'));return}
+      const shipped=['shipped','done'].includes(info.status);
+      const method=h('select',{disabled:shipped},info.options.map(o=>h('option',{value:o.method,selected:o.method===info.shipping_method},o.label+(o.fee==null?' • ตามจริง':' • '+money2(o.fee)+' บาท'))));
+      const fee=h('input',{type:'number',inputmode:'decimal',disabled:shipped});fee.value=info.shipping_fee;
+      const feeRow=h('label',{class:'fld'},h('span',null,'ค่าส่ง (บาท)'),fee);
+      const addr=h('textarea',{rows:3,placeholder:info.customer_address?'ที่อยู่ลูกค้า: '+info.customer_address:'ที่อยู่ผู้รับ'});addr.value=info.shipping_address||'';
+      const save=h('input',{type:'checkbox'});
+      const track=h('input',{type:'text'});track.value=info.tracking_no||'';
+      const note=h('textarea',{rows:2,disabled:shipped});note.value=info.internal_note||'';
+      const msg=h('div',{class:'note err',style:'display:none'});
+      const opt=()=>info.options.find(o=>o.method===method.value);
+      const sync=()=>{const o=opt();feeRow.style.display=(o&&o.fee==null&&method.value!=='pending')?'':'none'};
+      method.onchange=sync;sync();
+      const btn=h('button',{type:'button',class:'sumbtn'},'บันทึก');
+      btn.onclick=async()=>{
+        const o=opt(),changed=method.value!==info.shipping_method;
+        const feeVal=o&&o.fee==null&&(changed||Number(fee.value)!==info.shipping_fee)?Number(fee.value||0):null;
+        const addrChanged=addr.value!==(info.shipping_address||'')||save.checked;
+        btn.disabled=true;msg.style.display='none';
+        try{
+          const r=await rpc('inbox_update_order_shipping',{p_order:d.id,p_expected_method:info.shipping_method,p_method:changed?method.value:null,p_fee:feeVal,
+            p_address:addrChanged?addr.value:null,p_save_address:save.checked,p_tracking:track.value!==(info.tracking_no||'')?track.value:null,p_note:note.value!==(info.internal_note||'')?note.value:null});
+          toast(r.changes&&r.changes.length?'บันทึก '+r.changes.join(', ')+' แล้ว':'ไม่มีการเปลี่ยนแปลง');redraw();
+        }catch(e){msg.textContent=e.message;msg.style.display='';btn.disabled=false}
+      };
+      box.replaceChildren(h('b',null,'จัดส่งและหมายเหตุ'),
+        info.shipping_method==='pending'?h('div',{class:'note'},'ยังไม่เลือกวิธีส่ง'):null,
+        h('label',{class:'fld'},h('span',null,'วิธีจัดส่ง'),method),feeRow,
+        h('label',{class:'fld'},h('span',null,'ที่อยู่จัดส่ง'),addr),
+        h('label',{class:'chk'},save,' บันทึกเป็นที่อยู่ตั้งต้นของลูกค้าด้วย'),
+        h('label',{class:'fld'},h('span',null,'เลขพัสดุ'),track),
+        h('label',{class:'fld'},h('span',null,'หมายเหตุภายใน'),note),msg,btn);
+    }catch(e){box.replaceChildren(h('b',null,'จัดส่งและหมายเหตุ'),h('div',{class:'note err'},e.message))}
+  })();
+  return box;
+}
+
 // ---- orders workspace (list, search, detail, status moves)
 const ORDER_FILTERS=[['open','เปิดอยู่'],['all','ทั้งหมด'],['inquiry','รอคอนเฟิร์ม'],['confirmed','คอนเฟิร์มแล้ว'],['designing','ออกแบบ'],['design_approved','อนุมัติแบบ'],['in_production','ผลิต'],['ready_to_ship','พร้อมส่ง'],['shipped','ส่งแล้ว'],['done','เสร็จ'],['cancelled','ยกเลิก']];
 const CHANNEL={line:'LINE',tiktok:'TikTok',ig:'IG'};
@@ -886,6 +992,8 @@ async function openOrderDetail(id){
       if(d.priority&&d.priority!=='normal')info.push(['ความสำคัญ',d.priority]);
       if(info.length)nodes.push(h('div',{class:'ocard'},info.map(([k,v])=>h('div',{class:'kv'},h('span',null,k),h('b',null,v)))));
       nodes.push(statusBlock(d,opt,draw));
+      nodes.push(paymentBlock(d,draw));
+      nodes.push(shippingBlock(d,draw));
       if(d.conversation_id&&conv(d.conversation_id))nodes.push(h('button',{type:'button',class:'menuitem',onclick:()=>{S.ord=null;openChat(d.conversation_id)}},'💬 เปิดแชทลูกค้า'));
       body.replaceChildren(...nodes);
     }catch(e){body.replaceChildren(h('div',{class:'empty'},e.message))}
