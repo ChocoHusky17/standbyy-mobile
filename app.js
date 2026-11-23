@@ -70,7 +70,7 @@ function logoutNow(expired){
 
 let S_failCount=0;
 
-function logoImg(){return h('img',{class:'brand',src:'apple-touch-icon.png',alt:'Standby.y',width:32,height:32})}
+function logoImg(){return h('img',{class:'brand',src:'logo-mark.png',alt:'Standby.y',width:32,height:32})}
 // ---- history: the phone's back button / edge swipe closes the top layer or screen
 const nav={stack:[],ignore:0,lock:false,pending:[],
   push(close,el){
