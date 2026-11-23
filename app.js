@@ -4,7 +4,7 @@ const SB='https://tuherrvhmvajrtwavqmv.supabase.co';
 const API=SB+'/functions/v1/inbox-api';
 const KEY='standbyy.session';
 const root=document.getElementById('app');
-const S={session:null,revision:0,state:null,filter:'all',search:'',open:null,chat:null,pollTimer:null,sending:false};
+const S={team:null,teamUnread:0,teamTick:0,session:null,revision:0,state:null,filter:'all',search:'',open:null,chat:null,pollTimer:null,sending:false};
 
 // ---- small helpers
 function h(tag,props,...kids){
@@ -92,7 +92,7 @@ async function poll(force){
     const r=await rpc('inbox_poll_summary',{p_revision:force?0:S.revision});
     if(r.state){S.state=r.state;S.revision=r.revision}
     if(S.state&&r.waits)for(const c of S.state.conversations)if(r.waits[c.id]!=null)c.waiting_seconds=r.waits[c.id];
-    if(S.open)updateChat();else renderList();
+    if(S.team)updateTeam();else if(S.open)updateChat();else{renderList();if(S.teamTick++%3===0)teamPeek()}
     updateTitle();
   }catch(e){if(e.status!==401)showNetErr(e)}
 }
@@ -128,11 +128,11 @@ function renderList(){
   const s=S.session;if(!s)return;
   if(!listEls||!root.contains(listEls.list)){
     const search=h('input',{type:'search',placeholder:'ค้นหาชื่อลูกค้า',value:S.search,oninput:e=>{S.search=e.target.value;fillList()}});
-    const tabs=h('div',{class:'tabs'},[['all','ทั้งหมด'],['mine','ของฉัน'],['waiting','รอตอบ']].map(([k,t])=>h('button',{type:'button','data-k':k,onclick:()=>{S.filter=k;renderList()}},t)));
+    const tabs=h('div',{class:'tabs'},[['all','ทั้งหมด'],['mine','ของฉัน'],['waiting','รอตอบ']].map(([k,t])=>h('button',{type:'button','data-k':k,onclick:()=>{S.filter=k;renderList()}},t)).concat([h('button',{type:'button',id:'teamtab',onclick:openTeam},'ทีม',h('span',{class:'badge tb',style:S.teamUnread?'':'display:none'},String(S.teamUnread||'')))]));
     const list=h('div',{class:'list'});
     const net=h('div',{class:'note err',id:'neterr',style:'display:none'});
     root.replaceChildren(
-      h('div',{class:'bar'},h('h1',null,'แชทลูกค้า',h('small',null,(s.name||s.id)+' · v4')),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
+      h('div',{class:'bar'},h('h1',null,'แชทลูกค้า',h('small',null,(s.name||s.id)+' · v5')),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
       tabs,h('div',{class:'search'},search),net,list);
     listEls={list,tabs,net};
   }
@@ -179,7 +179,7 @@ function buildChat(){
   const note=h('div',{class:'note',style:'display:none'});
   const comp=h('div',{class:'composer'},ta,send);
   S.chat.els={ta,send,msgs,note,comp,title:h('h1',null,c.customer||'แชท')};
-  root.replaceChildren(h('div',{class:'bar'},h('button',{type:'button',class:'back','aria-label':'กลับ',onclick:closeChat},'‹'),S.chat.els.title),note,msgs,comp);
+  root.replaceChildren(h('div',{class:'bar'},h('button',{type:'button',class:'back','aria-label':'กลับ',onclick:closeChat},'‹'),S.chat.els.title,h('button',{type:'button',onclick:openOrders},'ออเดอร์')),note,msgs,comp);
   refreshSend();
 }
 function sendBlock(){
@@ -351,6 +351,110 @@ async function doSend(id,body,requestID){
     if(!n||(n.owner&&n.owner!==S.session.id))throw new ApiError(409,'แชทเปลี่ยนไป กรุณาลองใหม่');
     return await attempt(n.version);
   }
+}
+
+
+// ---- orders linked to this chat (read only; editing stays in the Mac app)
+const baht=n=>Number(n||0).toLocaleString('th-TH',{minimumFractionDigits:0,maximumFractionDigits:2})+' บาท';
+const STATUS={inquiry:'รอคอนเฟิร์ม',confirmed:'คอนเฟิร์มแล้ว',designing:'กำลังออกแบบ',design_approved:'อนุมัติแบบแล้ว',in_production:'กำลังผลิต',ready_to_ship:'พร้อมส่ง',shipped:'ส่งออกแล้ว',done:'จัดส่งเรียบร้อย',cancelled:'ยกเลิก'};
+const SHIP={ems:'EMS',grab_normal:'Grab',grab_from_customer:'Grab (ลูกค้าเรียก)',pickup:'รับที่ร้าน'};
+const PAY={paid:'ชำระเต็มแล้ว',deposit:'ชำระมัดจำแล้ว'};
+function dateTh(v){if(!v)return '-';const d=Date.parse(String(v).slice(0,10)+'T00:00:00+07:00');return isNaN(d)?String(v):new Date(d).toLocaleDateString('th-TH',{timeZone:tz,day:'numeric',month:'short',year:'numeric'})}
+function orderCard(o){
+  const row=(k,v)=>h('div',{class:'kv'},h('span',null,k),h('b',null,v));
+  return h('div',{class:'ocard'},
+    h('div',{class:'otop'},h('b',null,o.order_no),h('span',{class:'chip'},STATUS[o.status]||'ไม่ทราบสถานะ')),
+    row('ชำระเงิน',PAY[o.payment_status]||'ยังไม่ชำระ'),
+    row('วันส่งของ',dateTh(o.needed_by_date)),
+    row('จัดส่ง',(SHIP[o.shipping_method]||'รอคอนเฟิร์ม')+(o.tracking_no?' · '+o.tracking_no:'')),
+    h('div',{class:'items'},(o.items||[]).map(i=>h('div',{class:'item'},h('span',null,i.product_name+' '+(i.size_label||'')+' × '+i.quantity),h('span',null,baht(i.line_total))))),
+    o.discount_amount?row('ส่วนลด','-'+baht(o.discount_amount)):null,
+    o.rush_fee?row('ค่างานด่วน',baht(o.rush_fee)):null,
+    o.shipping_fee?row('ค่าส่ง',baht(o.shipping_fee)):null,
+    row('รวม',baht(o.total)));
+}
+async function openOrders(){
+  const id=S.open;
+  const body=h('div',{class:'ordersbody'},h('div',{class:'empty'},'กำลังโหลด…'));
+  const overlay=h('div',{class:'overlay'},h('div',{class:'sheet tall'},h('h2',null,'ออเดอร์ของแชทนี้'),body,h('div',{class:'actions'},h('button',{type:'button',onclick:()=>overlay.remove()},'ปิด'))));
+  document.body.append(overlay);
+  try{
+    const list=await rpc('inbox_linked_orders',{p_conversation:id});
+    body.replaceChildren(...(list.length?list.map(orderCard):[h('div',{class:'empty'},'ยังไม่มีออเดอร์ที่ผูกกับแชทนี้')]));
+  }catch(e){body.replaceChildren(h('div',{class:'empty'},e.message))}
+}
+
+// ---- team chat (same messages as the Mac app)
+function mentionBody(m){
+  // @names that were picked as mentions open that customer's chat
+  const names=(m.mentions||[]).filter(x=>x&&x.name);
+  if(!names.length)return m.body;
+  const parts=[];let rest=m.body;
+  while(rest){
+    let best=null;
+    for(const x of names){const i=rest.indexOf('@'+x.name);if(i>=0&&(!best||i<best.i))best={i,x}}
+    if(!best){parts.push(rest);break}
+    if(best.i)parts.push(rest.slice(0,best.i));
+    const x=best.x;parts.push(h('button',{type:'button',class:'mention',onclick:()=>{closeTeam();openChat(x.conversation)}},'@'+x.name));
+    rest=rest.slice(best.i+x.name.length+1);
+  }
+  return parts;
+}
+async function teamPeek(){
+  try{const f=await rpc('inbox_team_messages',{p_after:2147483647});S.teamUnread=f.unread||0;
+    const b=document.querySelector('#teamtab .tb');if(b){b.textContent=String(S.teamUnread);b.style.display=S.teamUnread?'':'none'}}catch(e){}
+}
+function openTeam(){
+  S.team={messages:[],lastRead:0,els:null,sending:false};
+  const ta=h('textarea',{rows:1,placeholder:'พิมพ์ถึงทีม…',oninput:()=>{ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,120)+'px';send.disabled=!ta.value.trim()}});
+  const send=h('button',{type:'button',class:'send','aria-label':'ส่ง',disabled:true,onclick:sendTeam},'➤');
+  const msgs=h('div',{class:'msgs'});
+  const note=h('div',{class:'note err',style:'display:none'});
+  S.team.els={ta,send,msgs,note};
+  root.replaceChildren(h('div',{class:'bar'},h('button',{type:'button',class:'back','aria-label':'กลับ',onclick:closeTeam},'‹'),h('h1',null,'แชททีมแอดมิน')),note,msgs,h('div',{class:'composer'},ta,send));
+  listEls=null;updateTeam(true);
+}
+function closeTeam(){S.team=null;renderList();poll(true)}
+async function updateTeam(first){
+  const t=S.team;if(!t||t.busy)return;t.busy=true;
+  try{
+    const after=t.messages.length?t.messages[t.messages.length-1].id:0;
+    const f=await rpc('inbox_team_messages',{p_after:after});
+    if(S.team!==t)return;
+    const seen=new Set(t.messages.map(m=>m.id));
+    const fresh=f.messages.filter(m=>!seen.has(m.id)).sort((a,b)=>a.id-b.id);
+    t.lastRead=f.last_read||0;
+    if(fresh.length||first){t.messages.push(...fresh);drawTeam(first)}
+    const last=t.messages.length?t.messages[t.messages.length-1].id:0;
+    if(last>t.lastRead&&!document.hidden){t.lastRead=last;rpc('inbox_team_read',{p_last:last}).then(()=>{S.teamUnread=0}).catch(()=>{})}
+  }catch(e){if(S.team===t&&e.status!==401){t.els.note.textContent=e.message;t.els.note.style.display=''}}
+  finally{t.busy=false}
+}
+function drawTeam(toBottom){
+  const t=S.team;if(!t)return;const box=t.els.msgs;
+  const near=box.scrollHeight-box.scrollTop-box.clientHeight<120;
+  const nodes=[];let day=null;
+  for(const m of t.messages){
+    const ms=m.created*1000,k=dayKey(ms);
+    if(k!==day){day=k;nodes.push(h('div',{class:'day'},dayLabel(ms)))}
+    const mine=m.author===S.session.id;
+    nodes.push(h('div',{class:'msg '+(mine?'out':'in')},
+      h('div',{class:'bubble'},m.conversation?h('button',{type:'button',class:'quote',onclick:()=>{closeTeam();openChat(m.conversation)}},'🗂 เคส: '+(m.customer||'ลูกค้า')):null,mentionBody(m)),
+      h('div',{class:'meta'},(mine?'':m.author_name+' · ')+hm(ms))));
+  }
+  if(!nodes.length)nodes.push(h('div',{class:'empty'},'ยังไม่มีข้อความ'));
+  box.replaceChildren(...nodes);
+  if(toBottom||near)box.scrollTop=box.scrollHeight;
+}
+async function sendTeam(){
+  const t=S.team;if(!t||t.sending)return;const body=t.els.ta.value.trim();if(!body)return;
+  t.sending=true;t.els.send.disabled=true;
+  try{
+    await rpc('inbox_team_send',{p_body:body,p_conversation:null,p_mentions:[]});
+    t.els.ta.value='';t.els.ta.style.height='auto';await updateTeam();
+    t.els.msgs.scrollTop=t.els.msgs.scrollHeight;
+  }catch(e){t.els.note.textContent=e.message;t.els.note.style.display=''}
+  finally{t.sending=false;t.els.send.disabled=!t.els.ta.value.trim()}
 }
 
 // ---- notifications (Web Push, roadmap 6-5)
