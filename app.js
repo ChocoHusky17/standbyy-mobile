@@ -132,7 +132,7 @@ function renderList(){
     const list=h('div',{class:'list'});
     const net=h('div',{class:'note err',id:'neterr',style:'display:none'});
     root.replaceChildren(
-      h('div',{class:'bar'},h('h1',null,'แชทลูกค้า',h('small',null,(s.name||s.id)+' · v5')),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
+      h('div',{class:'bar'},h('h1',null,'แชทลูกค้า',h('small',null,(s.name||s.id)+' · v6')),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
       tabs,h('div',{class:'search'},search),net,list);
     listEls={list,tabs,net};
   }
@@ -177,7 +177,9 @@ function buildChat(){
   const send=h('button',{type:'button',class:'send','aria-label':'ส่ง',onclick:()=>askSend()},'➤');
   const msgs=h('div',{class:'msgs'});
   const note=h('div',{class:'note',style:'display:none'});
-  const comp=h('div',{class:'composer'},ta,send);
+  const file=h('input',{type:'file',accept:'image/*',style:'display:none',onchange:()=>{const f=file.files[0];file.value='';if(f)askSendImage(f)}});
+  const attach=h('button',{type:'button',class:'attach','aria-label':'ส่งรูป',onclick:()=>{if(!sendBlock()&&!S.sending)file.click()}},'📷');
+  const comp=h('div',{class:'composer'},attach,file,ta,send);
   S.chat.els={ta,send,msgs,note,comp,title:h('h1',null,c.customer||'แชท')};
   root.replaceChildren(h('div',{class:'bar'},h('button',{type:'button',class:'back','aria-label':'กลับ',onclick:closeChat},'‹'),S.chat.els.title,h('button',{type:'button',onclick:openOrders},'ออเดอร์')),note,msgs,comp);
   refreshSend();
@@ -341,9 +343,9 @@ function askSend(){
   };
   document.body.append(overlay);
 }
-async function doSend(id,body,requestID){
+async function doSend(id,body,requestID,mediaID){
   const c=conv(id);
-  const attempt=v=>api('/v1/send-line',{id,version:v,body,requestID,mobile:true});
+  const attempt=v=>api('/v1/send-line',Object.assign({id,version:v,requestID,mobile:true},mediaID?{mediaID}:{body}));
   try{return await attempt(c.version)}
   catch(e){
     if(e.status!==409)throw e;
@@ -353,6 +355,44 @@ async function doSend(id,body,requestID){
   }
 }
 
+
+
+// ---- sending a picture (always previewed and confirmed first)
+async function shrink(file){
+  let bmp;try{bmp=await createImageBitmap(file,{imageOrientation:'from-image'})}catch(e){throw new Error('เปิดรูปนี้ไม่ได้ ลองรูปแบบ JPEG หรือ PNG')}
+  let max=1600,q=0.82;
+  for(let i=0;i<8;i++){
+    const k=Math.min(1,max/Math.max(bmp.width,bmp.height));
+    const c=document.createElement('canvas');c.width=Math.round(bmp.width*k);c.height=Math.round(bmp.height*k);
+    const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(bmp,0,0,c.width,c.height);
+    const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',q));
+    if(blob&&blob.size<=800000)return blob;
+    max=Math.round(max*0.8);q=Math.max(0.6,q-0.05);
+  }
+  throw new Error('รูปใหญ่เกินไป ลองรูปอื่น');
+}
+function blobB64(blob){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]);r.onerror=()=>rej(new Error('อ่านรูปไม่ได้'));r.readAsDataURL(blob)})}
+async function askSendImage(file){
+  const c=conv(S.open);if(!c||sendBlock()||S.sending)return;
+  let blob;try{blob=await shrink(file)}catch(e){noteChat(e.message);return}
+  const url=URL.createObjectURL(blob),id=S.open,requestID=uuid();
+  const go=h('button',{type:'button',class:'go'},'ส่ง'),cancel=h('button',{type:'button'},'ยกเลิก');
+  const close=()=>{URL.revokeObjectURL(url);overlay.remove()};
+  const overlay=h('div',{class:'overlay'},h('div',{class:'sheet'},h('h2',null,'ส่งรูปนี้ถึง '+(c.customer||'ลูกค้า')+' ทาง LINE?'),
+    h('img',{class:'pic',src:url,alt:'รูปที่จะส่ง',style:'align-self:center'}),h('div',{class:'actions'},cancel,go)));
+  cancel.onclick=close;
+  go.onclick=async()=>{
+    go.disabled=cancel.disabled=true;S.sending=true;
+    try{
+      const cur=conv(id);
+      const up=await api('/v1/line-image',{id,version:cur.version,image:await blobB64(blob),mobile:true});
+      await doSend(id,null,requestID,up.mediaID);
+      close();toast('ส่งรูปแล้ว');await poll(true);if(S.chat)fetchNew();
+    }catch(err){close();noteChat(err.message||'ส่งรูปไม่สำเร็จ')}
+    finally{S.sending=false;refreshSend()}
+  };
+  document.body.append(overlay);
+}
 
 // ---- orders linked to this chat (read only; editing stays in the Mac app)
 const baht=n=>Number(n||0).toLocaleString('th-TH',{minimumFractionDigits:0,maximumFractionDigits:2})+' บาท';
