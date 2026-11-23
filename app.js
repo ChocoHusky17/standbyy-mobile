@@ -181,7 +181,7 @@ function renderList(){
     const list=h('div',{class:'list'});
     const net=h('div',{class:'note err',id:'neterr',style:'display:none'});
     root.replaceChildren(
-      h('div',{class:'bar'},h('h1',null,S.section==='mine'?'ข้อความของฉัน':'กล่องข้อความ',h('small',{id:'whoami'},(s.name||s.id)+' · v17')),h('button',{type:'button',id:'shiftbtn',onclick:toggleShift},'เวร'),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
+      h('div',{class:'bar'},h('h1',null,S.section==='mine'?'ข้อความของฉัน':'กล่องข้อความ',h('small',{id:'whoami'},(s.name||s.id)+' · v18')),h('button',{type:'button',id:'shiftbtn',onclick:toggleShift},'เวร'),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
       tabs,h('div',{class:'search'},search,wait),net,list);
     listEls={list,tabs,net};
   }
@@ -235,7 +235,7 @@ function buildChat(){
   const gal=h('button',{type:'button',class:'attach','aria-label':'คลังผลงาน',onclick:()=>{if(!sendBlock())openPortfolio(true)}},'🖼️');
   const comp=h('div',{class:'composer'},attach,gal,quick,ai,file,ta,send);
   S.chat.els={ta,send,msgs,note,comp,replybar:null,title:h('h1',null,c.customer||'แชท')};
-  root.replaceChildren(h('div',{class:'bar'},h('button',{type:'button',class:'back','aria-label':'กลับ',onclick:closeChat},'‹'),S.chat.els.title,h('button',{type:'button',onclick:openOrders},'ออเดอร์'),h('button',{type:'button','aria-label':'เมนูแชท',onclick:openChatMenu},'⋯')),note,msgs,comp);
+  root.replaceChildren(h('div',{class:'bar'},h('button',{type:'button',class:'back','aria-label':'กลับ',onclick:closeChat},'‹'),S.chat.els.title,h('button',{type:'button',onclick:openChatOrders},'ออเดอร์'),h('button',{type:'button','aria-label':'เมนูแชท',onclick:openChatMenu},'⋯')),note,msgs,comp);
   refreshSend();
 }
 function sendBlock(){
@@ -966,21 +966,43 @@ async function loadOrders(reset){
 function fillOrders(){
   const o=S.ord;if(!o||!o.listEl||o.view!=='list')return;
   const cnt=document.getElementById('ordcount');if(cnt)cnt.textContent=o.total?o.total+' รายการ':'';
-  const nodes=o.rows.map(r=>h('button',{type:'button',class:'row',onclick:()=>openOrderDetail(r.id)},
-    h('div',{class:'rowmain'},
-      h('div',{class:'rowtop'},h('div',{class:'rowname'},r.order_no+' · '+(r.customer_name||'')),h('div',{class:'rowtime'},baht(r.total))),
-      h('div',{class:'rowbottom'},h('span',{class:'chip'},STATUS[r.status]||r.status),h('span',{class:'chip'+(r.payment_status==='paid'?'':' wait')},PAY[r.payment_status]||'ยังไม่ชำระ'),
-        h('span',{class:'rowpreview'},(CHANNEL[r.source_channel]||r.source_channel||'')+' · ส่งของ '+dateTh(r.needed_by_date))))));
+  const nodes=o.rows.map(orderRow);
   if(o.error)nodes.unshift(h('div',{class:'note err'},o.error));
   if(o.loading)nodes.push(h('div',{class:'empty'},'กำลังโหลด…'));
   else if(!o.rows.length&&!o.error)nodes.push(h('div',{class:'empty'},'ไม่พบออเดอร์'));
   else if(o.rows.length<o.total)nodes.push(h('button',{type:'button',class:'older',style:'margin:12px auto;display:block',onclick:()=>{o.page++;loadOrders(false)}},'โหลดเพิ่ม'));
   o.listEl.replaceChildren(...nodes);
 }
+
+function orderRow(r){
+  return h('button',{type:'button',class:'row',onclick:()=>openOrderDetail(r.id)},
+    h('div',{class:'rowmain'},
+      h('div',{class:'rowtop'},h('div',{class:'rowname'},r.order_no+' · '+(r.customer_name||'')),h('div',{class:'rowtime'},baht(r.total))),
+      h('div',{class:'rowbottom'},h('span',{class:'chip'},STATUS[r.status]||r.status),h('span',{class:'chip'+(r.payment_status==='paid'?'':' wait')},PAY[r.payment_status]||'ยังไม่ชำระ'),
+        h('span',{class:'rowpreview'},(CHANNEL[r.source_channel]||r.source_channel||'')+' · ส่งของ '+dateTh(r.needed_by_date)))));
+}
+// The chat's "ออเดอร์" button: the same order screens as รายการออเดอร์, for the orders linked to this chat.
+async function openChatOrders(){
+  const chat=S.open;if(!chat)return;
+  S.ord={fromChat:chat,view:'chatlist',rows:[],total:0,q:'',status:'all'};
+  const o=S.ord;
+  const list=h('div',{class:'list'},h('div',{class:'empty'},'กำลังโหลด…'));
+  const backToChat=()=>{S.ord=null;if(S.chat){buildChat();drawMessages(true)}else openChat(chat)};
+  o.backToChat=backToChat;
+  o.showList=()=>{o.view='chatlist';root.replaceChildren(h('div',{class:'bar'},h('button',{type:'button',class:'back','aria-label':'กลับ',onclick:backToChat},'‹'),h('h1',null,'ออเดอร์ของแชทนี้',h('small',null,(conv(chat)||{}).customer||''))),list)};
+  o.showList();
+  try{
+    const rows=await rpc('inbox_linked_orders',{p_conversation:chat});
+    if(S.ord!==o)return;
+    o.chatRows=rows;
+    if(rows.length===1){openOrderDetail(rows[0].id);return}
+    list.replaceChildren(...(rows.length?rows.map(orderRow):[h('div',{class:'empty'},'ยังไม่มีออเดอร์ที่ผูกกับแชทนี้')]));
+  }catch(e){list.replaceChildren(h('div',{class:'empty'},e.message))}
+}
 async function openOrderDetail(id){
   const o=S.ord;if(!o)return;o.view='detail';
   const body=h('div',{class:'ordersbody full'},h('div',{class:'empty'},'กำลังโหลด…'));
-  root.replaceChildren(h('div',{class:'bar'},h('button',{type:'button',class:'back','aria-label':'กลับ',onclick:()=>{o.view='list';drawOrders();fillOrders();loadOrders(true)}},'‹'),h('h1',null,'ออเดอร์')),body);
+  root.replaceChildren(h('div',{class:'bar'},h('button',{type:'button',class:'back','aria-label':'กลับ',onclick:()=>{if(o.fromChat){if(o.chatRows&&o.chatRows.length>1)o.showList();else o.backToChat();return}o.view='list';drawOrders();fillOrders();loadOrders(true)}},'‹'),h('h1',null,'ออเดอร์')),body);
   async function draw(){
     try{
       const [d,opt]=await Promise.all([rpc('inbox_order_detail',{p_order:id}),rpc('inbox_order_status_options',{p_order:id})]);
@@ -994,7 +1016,7 @@ async function openOrderDetail(id){
       nodes.push(statusBlock(d,opt,draw));
       nodes.push(paymentBlock(d,draw));
       nodes.push(shippingBlock(d,draw));
-      if(d.conversation_id&&conv(d.conversation_id))nodes.push(h('button',{type:'button',class:'menuitem',onclick:()=>{S.ord=null;openChat(d.conversation_id)}},'💬 เปิดแชทลูกค้า'));
+      if(!o.fromChat&&d.conversation_id&&conv(d.conversation_id))nodes.push(h('button',{type:'button',class:'menuitem',onclick:()=>{S.ord=null;openChat(d.conversation_id)}},'💬 เปิดแชทลูกค้า'));
       body.replaceChildren(...nodes);
     }catch(e){body.replaceChildren(h('div',{class:'empty'},e.message))}
   }
@@ -1035,16 +1057,6 @@ function orderCard(o){
     o.shipping_fee?row('ค่าส่ง',baht(o.shipping_fee)):null,
     row('รวม',baht(o.total)),
     S.open?h('button',{type:'button',class:'sumbtn',onclick:ev=>makeSummary(o,ev.target)},'สรุปรายการเป็นรูป + QR'):null);
-}
-async function openOrders(){
-  const id=S.open;
-  const body=h('div',{class:'ordersbody'},h('div',{class:'empty'},'กำลังโหลด…'));
-  const overlay=h('div',{class:'overlay'},h('div',{class:'sheet tall'},h('h2',null,'ออเดอร์ของแชทนี้'),body,h('div',{class:'actions'},h('button',{type:'button',onclick:()=>overlay.remove()},'ปิด'))));
-  document.body.append(overlay);
-  try{
-    const list=await rpc('inbox_linked_orders',{p_conversation:id});
-    body.replaceChildren(...(list.length?list.map(orderCard):[h('div',{class:'empty'},'ยังไม่มีออเดอร์ที่ผูกกับแชทนี้')]));
-  }catch(e){body.replaceChildren(h('div',{class:'empty'},e.message))}
 }
 
 // ---- team chat (same messages as the Mac app)
