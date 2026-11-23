@@ -181,7 +181,7 @@ function renderList(){
     const list=h('div',{class:'list'});
     const net=h('div',{class:'note err',id:'neterr',style:'display:none'});
     root.replaceChildren(
-      h('div',{class:'bar'},h('h1',null,S.section==='mine'?'ข้อความของฉัน':'กล่องข้อความ',h('small',{id:'whoami'},(s.name||s.id)+' · v21')),h('button',{type:'button',id:'shiftbtn',onclick:toggleShift},'เวร'),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
+      h('div',{class:'bar'},h('h1',null,S.section==='mine'?'ข้อความของฉัน':'กล่องข้อความ',h('small',{id:'whoami'},(s.name||s.id)+' · v22')),h('button',{type:'button',id:'shiftbtn',onclick:toggleShift},'เวร'),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
       tabs,h('div',{class:'search'},search,wait),net,list);
     listEls={list,tabs,net};
   }
@@ -921,9 +921,9 @@ async function openDraftOrder(){
   };
   const qty=h('input',{type:'number',inputmode:'numeric',min:'1',max:'999',value:'1'});
   const custom=h('input',{type:'checkbox'});
-  const cName=h('input',{type:'text',placeholder:'ชื่อสินค้า'}),cSize=h('input',{type:'text',placeholder:'ขนาด'}),cPrice=h('input',{type:'number',inputmode:'decimal',placeholder:'ราคาต่อชิ้น (บาท)'});
-  const customBox=h('div',{style:'display:none;gap:8px;flex-direction:column'},cName,cSize,cPrice);
-  custom.onchange=()=>{customBox.style.display=custom.checked?'flex':'none';typeSel.style.display=sizeSel.style.display=custom.checked?'none':''};
+  const cSize=h('input',{type:'text',placeholder:'ขนาดพิเศษ (เช่น 80×200 ซม.)'}),cPrice=h('input',{type:'number',inputmode:'decimal',placeholder:'ราคาต่อชิ้น (บาท)'});
+  const customBox=h('div',{style:'display:none;gap:8px;flex-direction:column'},cSize,cPrice);
+  custom.onchange=()=>{customBox.style.display=custom.checked?'flex':'none';sizeSel.style.display=custom.checked?'none':''};
   const list=h('div',{class:'items'});
   const totalEl=h('div',{class:'kv'});
   const needed=h('input',{type:'date',min:todayInput()});
@@ -945,14 +945,14 @@ async function openDraftOrder(){
     if(!Number.isInteger(q)||q<1||q>999){err.textContent='จำนวนต้องเป็นเลข 1-999';err.style.display='';return}
     if(lines.length>=50){err.textContent='ใส่ได้ไม่เกิน 50 รายการ';err.style.display='';return}
     if(custom.checked){const price=Number(cPrice.value);
-      if(!cName.value.trim()||!cSize.value.trim()||!(price>=0)||cPrice.value===''){err.textContent='กรอกชื่อสินค้า ขนาด และราคาให้ครบ';err.style.display='';return}
-      lines.push({custom:true,label:cName.value.trim()+' · '+cSize.value.trim(),price,quantity:q,payload:{product_name:cName.value.trim(),size_label:cSize.value.trim(),quantity:q,unit_price:price}});
-      cName.value=cSize.value=cPrice.value='';
+      if(!typeSel.value||!cSize.value.trim()||!(price>=0)||cPrice.value===''){err.textContent='เลือกประเภทสินค้า และกรอกขนาดกับราคาให้ครบ';err.style.display='';return}
+      lines.push({custom:true,label:typeSel.value+' · '+cSize.value.trim(),price,quantity:q,payload:{product_name:typeSel.value,size_label:cSize.value.trim(),quantity:q,unit_price:price}});
+      cSize.value=cPrice.value='';
     }else{const z=catalog.find(x=>x.id===sizeSel.value);if(!z){err.textContent=typeSel.value?'เลือกขนาดก่อน':'เลือกประเภทสินค้าและขนาดก่อน';err.style.display='';return}
       lines.push({label:z.product+' · '+z.size,price:z.price,quantity:q,payload:{size_id:z.id,quantity:q}});sizeSel.value=''}
     qty.value='1';redraw();
   };
-  const save=h('button',{type:'button',class:'go'},'บันทึกร่าง');
+  const save=h('button',{type:'button',class:'sumbtn'},'บันทึกร่าง');
   save.onclick=async()=>{
     err.style.display='none';
     const fail=t=>{err.textContent=t;err.style.display='';save.disabled=false};
