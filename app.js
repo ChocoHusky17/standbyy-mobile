@@ -4,7 +4,7 @@ const SB='https://tuherrvhmvajrtwavqmv.supabase.co';
 const API=SB+'/functions/v1/inbox-api';
 const KEY='standbyy.session';
 const root=document.getElementById('app');
-const S={ord:null,team:null,teamUnread:0,teamTick:0,session:null,revision:0,state:null,filter:'all',search:'',open:null,chat:null,pollTimer:null,sending:false};
+const S={section:'inbox',ph:null,waitOnly:false,ord:null,team:null,teamUnread:0,teamTick:0,session:null,revision:0,state:null,filter:'all',search:'',open:null,chat:null,pollTimer:null,sending:false};
 
 // ---- small helpers
 function h(tag,props,...kids){
@@ -95,7 +95,7 @@ async function poll(force){
     const r=await rpc('inbox_poll_summary',{p_revision:force?0:S.revision});
     if(r.state){S.state=r.state;S.revision=r.revision}
     if(S.state&&r.waits)for(const c of S.state.conversations)if(r.waits[c.id]!=null)c.waiting_seconds=r.waits[c.id];
-    if(S.team)updateTeam();else if(S.ord){}else if(S.open)updateChat();else{renderList();if(S.teamTick++%3===0)teamPeek()}
+    if(S.team)updateTeam();else if(S.ord||S.ph){}else if(S.open)updateChat();else{renderList();if(S.teamTick++%3===0)teamPeek()}
     updateTitle();
   }catch(e){if(e.status!==401)showNetErr(e)}
 }
@@ -119,9 +119,9 @@ function visibleList(){
   if(!S.state)return [];
   const me=S.session.id,q=S.search.trim().toLowerCase();
   return S.state.conversations.filter(c=>{
-    if(S.filter==='mine'&&c.owner!==me)return false;
-    if(S.filter==='waiting'&&c.status!=='waiting')return false;
-    if(c.status==='closed'&&S.filter!=='all')return false;
+    if(S.section==='mine'&&c.owner!==me)return false;
+    if(S.waitOnly&&c.status!=='waiting')return false;
+    if(c.status==='closed'&&S.section==='mine')return false;
     if(q&&!((c.customer||'').toLowerCase().includes(q)||((c.messages&&c.messages[0]&&c.messages[0].body)||'').toLowerCase().includes(q)||(S.hits&&S.hits.q===q&&S.hits.ids.has(c.id))))return false;
     return true;
   }).sort((a,b)=>(isPinned(b)-isPinned(a))||((lastMs(b)||0)-(lastMs(a)||0)));
@@ -139,24 +139,55 @@ function serverSearch(){
       if(S.search.trim().toLowerCase()===q){S.hits={q,ids:new Set(ids)};if(listEls&&!S.open&&!S.team)fillList()}}catch(e){}
   },400);
 }
+
+// ---- main menu (same items and order as the Mac app's sidebar)
+const MENU=[['inbox','💬','กล่องข้อความ'],['mine','👤','ข้อความของฉัน'],['orders','📦','รายการออเดอร์'],['catalog','🏷️','สินค้าและราคา'],['portfolio','🖼️','คลังผลงาน'],['team','👥','ทีมแอดมิน'],['settings','⚙️','ตั้งค่า']];
+function unreadFor(k){
+  if(!S.state)return k==='team'?S.teamUnread:0;
+  if(k==='team')return S.teamUnread||0;
+  if(k!=='inbox'&&k!=='mine')return 0;
+  return S.state.conversations.filter(c=>k==='inbox'||c.owner===S.session.id).reduce((n,c)=>n+Math.max(0,c.unread_count||0),0);
+}
+function menuTabs(active){
+  return h('div',{class:'tabs scroll menu'},MENU.map(([k,icon,t])=>{
+    const n=unreadFor(k);
+    return h('button',{type:'button','data-k':k,class:active===k?'on':'',onclick:()=>goSection(k)},icon+' '+t,h('span',{class:'badge tb','data-badge':k,style:n?'':'display:none'},n>999?'999+':String(n)));
+  }));
+}
+function refreshBadges(){
+  document.querySelectorAll('[data-badge]').forEach(b=>{const n=unreadFor(b.dataset.badge);b.textContent=n>999?'999+':String(n);b.style.display=n?'':'none'});
+}
+function goSection(k){
+  S.team=null;S.ord=null;S.ph=null;S.open=null;S.chat=null;listEls=null;
+  if(k==='inbox'||k==='mine'){S.section=k;renderList();poll(true)}
+  else if(k==='orders')openOrdersTab();
+  else if(k==='team')openTeam();
+  else openPlaceholder(k);
+}
+const PLACEHOLDER={catalog:['สินค้าและราคา','ดูสินค้าและราคามาตรฐาน'],portfolio:['คลังผลงาน','ดูรูปผลงานและส่งเข้าแชท'],settings:['ตั้งค่า','โปรไฟล์ เปลี่ยนรหัสผ่าน และตั้งค่าร้าน']};
+function openPlaceholder(k){
+  S.ph=k;const [title,desc]=PLACEHOLDER[k]||[k,''];
+  root.replaceChildren(h('div',{class:'bar'},h('h1',null,title)),menuTabs(k),h('div',{class:'empty'},desc+' — กำลังเตรียมบนมือถือ ใช้ในแอป Mac ไปก่อน'));
+}
 let listEls=null;
 function renderList(){
   const s=S.session;if(!s)return;
   if(!listEls||!root.contains(listEls.list)){
     const search=h('input',{type:'search',placeholder:'ค้นหาชื่อลูกค้าหรือข้อความ',value:S.search,oninput:e=>{S.search=e.target.value;fillList();serverSearch()}});
-    const tabs=h('div',{class:'tabs'},[['all','ทั้งหมด'],['mine','ของฉัน'],['waiting','รอตอบ']].map(([k,t])=>h('button',{type:'button','data-k':k,onclick:()=>{S.filter=k;renderList()}},t)).concat([h('button',{type:'button',onclick:openOrdersTab},'ออเดอร์'),h('button',{type:'button',id:'teamtab',onclick:openTeam},'ทีม',h('span',{class:'badge tb',style:S.teamUnread?'':'display:none'},String(S.teamUnread||'')))]));
+    const tabs=menuTabs(S.section);
+    const wait=h('button',{type:'button',class:'waitbtn'+(S.waitOnly?' on':''),onclick:()=>{S.waitOnly=!S.waitOnly;wait.classList.toggle('on',S.waitOnly);fillList()}},'รอตอบ');
     const list=h('div',{class:'list'});
     const net=h('div',{class:'note err',id:'neterr',style:'display:none'});
     root.replaceChildren(
-      h('div',{class:'bar'},h('h1',null,'แชทลูกค้า',h('small',{id:'whoami'},(s.name||s.id)+' · v13')),h('button',{type:'button',id:'shiftbtn',onclick:toggleShift},'เวร'),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
-      tabs,h('div',{class:'search'},search),net,list);
+      h('div',{class:'bar'},h('h1',null,S.section==='mine'?'ข้อความของฉัน':'กล่องข้อความ',h('small',{id:'whoami'},(s.name||s.id)+' · v14')),h('button',{type:'button',id:'shiftbtn',onclick:toggleShift},'เวร'),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
+      tabs,h('div',{class:'search'},search,wait),net,list);
     listEls={list,tabs,net};
   }
-  for(const b of listEls.tabs.children)b.classList.toggle('on',b.dataset.k===S.filter);
   fillList();
 }
 function fillList(){
   const {list}=listEls;
+  refreshBadges();
   const sb=document.getElementById('shiftbtn');if(sb)sb.textContent=onDuty()?'🟢 เข้าเวร':'⚪ ออกเวร';
   if(!S.state){list.replaceChildren(h('div',{class:'empty'},'กำลังโหลด…'));return}
   const items=visibleList();
@@ -720,7 +751,7 @@ function drawOrders(){
   const search=h('input',{type:'search',placeholder:'ค้นหาเลขออเดอร์ ชื่อ หรือเบอร์โทร',value:o.q,oninput:e=>{o.q=e.target.value;clearTimeout(o.timer);o.timer=setTimeout(()=>loadOrders(true),400)}});
   const chips=h('div',{class:'tabs scroll'},ORDER_FILTERS.map(([k,t])=>h('button',{type:'button',class:o.status===k?'on':'','data-k':k,onclick:()=>{o.status=k;for(const b of chips.children)b.classList.toggle('on',b.dataset.k===k);loadOrders(true)}},t)));
   o.listEl=h('div',{class:'list'});
-  root.replaceChildren(h('div',{class:'bar'},h('button',{type:'button',class:'back','aria-label':'กลับ',onclick:closeOrdersTab},'‹'),h('h1',null,'ออเดอร์',h('small',{id:'ordcount'},''))),
+  root.replaceChildren(h('div',{class:'bar'},h('h1',null,'รายการออเดอร์',h('small',{id:'ordcount'},''))),menuTabs('orders'),
     chips,h('div',{class:'search'},search),o.listEl);
   fillOrders();
 }
@@ -837,7 +868,7 @@ function mentionBody(m){
 }
 async function teamPeek(){
   try{const f=await rpc('inbox_team_messages',{p_after:2147483647});S.teamUnread=f.unread||0;
-    const b=document.querySelector('#teamtab .tb');if(b){b.textContent=String(S.teamUnread);b.style.display=S.teamUnread?'':'none'}}catch(e){}
+    refreshBadges()}catch(e){}
 }
 function openTeam(){
   S.team={messages:[],lastRead:0,els:null,sending:false};
@@ -846,7 +877,7 @@ function openTeam(){
   const msgs=h('div',{class:'msgs'});
   const note=h('div',{class:'note err',style:'display:none'});
   S.team.els={ta,send,msgs,note};
-  root.replaceChildren(h('div',{class:'bar'},h('button',{type:'button',class:'back','aria-label':'กลับ',onclick:closeTeam},'‹'),h('h1',null,'แชททีมแอดมิน')),note,msgs,h('div',{class:'composer'},ta,send));
+  root.replaceChildren(h('div',{class:'bar'},h('h1',null,'ทีมแอดมิน')),menuTabs('team'),note,msgs,h('div',{class:'composer'},ta,send));
   listEls=null;updateTeam(true);
 }
 function closeTeam(){S.team=null;renderList();poll(true)}
