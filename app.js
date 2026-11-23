@@ -54,6 +54,11 @@ async function authed(fn){
 function rpc(name,body){return authed(()=>post(SB+'/rest/v1/rpc/'+name,body,{apikey:S.session.publicKey,Authorization:'Bearer '+S.session.token}))}
 function api(path,body){return authed(()=>post(API+path,body,{Authorization:'Bearer '+S.session.token}))}
 function logout(expired){
+  // Stop this phone's notifications first (needs the session), but never hold the user up for long.
+  if(!expired&&S.session){Promise.race([pushOff(),new Promise(r=>setTimeout(r,4000))]).catch(()=>{}).finally(()=>logoutNow(false));return}
+  logoutNow(expired);
+}
+function logoutNow(expired){
   clearInterval(S.pollTimer);S.pollTimer=null;saveSession(null);S.state=null;S.revision=0;S.open=null;S.chat=null;
   renderLogin(expired?'การเข้าสู่ระบบหมดอายุ กรุณาเข้าสู่ระบบใหม่':'');
 }
@@ -127,7 +132,7 @@ function renderList(){
     const list=h('div',{class:'list'});
     const net=h('div',{class:'note err',id:'neterr',style:'display:none'});
     root.replaceChildren(
-      h('div',{class:'bar'},h('h1',null,'แชทลูกค้า',h('small',null,s.name||s.id)),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
+      h('div',{class:'bar'},h('h1',null,'แชทลูกค้า',h('small',null,s.name||s.id)),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
       tabs,h('div',{class:'search'},search),net,list);
     listEls={list,tabs,net};
   }
@@ -302,6 +307,56 @@ async function doSend(id,body,requestID){
     if(!n||(n.owner&&n.owner!==S.session.id))throw new ApiError(409,'แชทเปลี่ยนไป กรุณาลองใหม่');
     return await attempt(n.version);
   }
+}
+
+// ---- notifications (Web Push, roadmap 6-5)
+const standalone=()=>window.navigator.standalone===true||matchMedia('(display-mode: standalone)').matches;
+const pushSupported=()=>'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window;
+function b64uBytes(s){const p=s.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-s.length%4)%4);return Uint8Array.from(atob(p),c=>c.charCodeAt(0))}
+async function pushReg(){return navigator.serviceWorker.register('sw.js').then(()=>navigator.serviceWorker.ready)}
+async function pushSub(){if(!pushSupported())return null;const reg=await navigator.serviceWorker.getRegistration();return reg?reg.pushManager.getSubscription():null}
+async function pushOn(){
+  if(await Notification.requestPermission()!=='granted')throw new Error('ยังไม่ได้อนุญาตการแจ้งเตือน ไปที่ ตั้งค่า › Standby.y › การแจ้งเตือน ของ iPhone');
+  const reg=await pushReg();
+  const {publicKey}=await api('/v1/push/key',{});
+  let sub=await reg.pushManager.getSubscription();
+  if(sub){const cur=sub.options&&sub.options.applicationServerKey;const want=b64uBytes(publicKey);
+    if(!cur||cur.byteLength!==want.length||new Uint8Array(cur).some((v,i)=>v!==want[i])){await sub.unsubscribe();sub=null}}
+  if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64uBytes(publicKey)});
+  const j=sub.toJSON();
+  await rpc('inbox_push_subscribe',{p_endpoint:j.endpoint,p_p256dh:j.keys.p256dh,p_auth:j.keys.auth});
+}
+async function pushOff(){
+  const sub=await pushSub();if(!sub)return;
+  const ep=sub.endpoint;await sub.unsubscribe();
+  if(S.session)await rpc('inbox_push_unsubscribe',{p_endpoint:ep}).catch(()=>{});
+}
+async function openPushSheet(){
+  const body=h('div',{class:'text'},'กำลังตรวจสอบ…');
+  const actions=h('div',{class:'actions'});
+  const close=h('button',{type:'button',onclick:()=>overlay.remove()},'ปิด');
+  const overlay=h('div',{class:'overlay'},h('div',{class:'sheet'},h('h2',null,'แจ้งเตือนข้อความใหม่'),body,actions));
+  document.body.append(overlay);
+  const say=t=>body.textContent=t;
+  async function draw(){
+    actions.replaceChildren(close);
+    if(!pushSupported()||!standalone()){say('iPhone ต้องเพิ่มเว็บนี้ไว้ที่หน้าจอโฮมก่อน: กดปุ่มแชร์ใน Safari แล้วเลือก "เพิ่มไปที่หน้าจอโฮม" จากนั้นเปิดจากไอคอนบนหน้าจอโฮม (ต้องใช้ iOS 16.4 ขึ้นไป)');return}
+    const sub=await pushSub();
+    if(sub&&Notification.permission==='granted'){
+      say('เปิดแจ้งเตือนบนเครื่องนี้อยู่ จะแจ้งเมื่อลูกค้าส่งข้อความมาในแชทที่ยังว่างหรือเป็นของคุณ (ข้อความแจ้งเตือนไม่แสดงเนื้อหาแชท)');
+      const test=h('button',{type:'button',onclick:async()=>{test.disabled=true;say('กำลังส่งแจ้งเตือนทดสอบ…');
+        try{const r=await api('/v1/push/test',{});say('ส่งทดสอบแล้ว: '+r.devices+' เครื่อง, ผลจากบริการแจ้งเตือน '+(r.statuses.join(', ')||'-')+' (201 = รับแล้ว) ถ้าไม่เห็นแจ้งเตือนภายในไม่กี่วินาที แจ้งฉันพร้อมตัวเลขนี้')}
+        catch(e){say(e.message)}test.disabled=false}},'ส่งแจ้งเตือนทดสอบ');
+      const off=h('button',{type:'button',onclick:async()=>{try{await pushOff();draw()}catch(e){say(e.message)}}},'ปิดแจ้งเตือน');
+      actions.replaceChildren(close,off,test);
+    }else{
+      say('ยังไม่ได้เปิดแจ้งเตือนบนเครื่องนี้');
+      const on=h('button',{type:'button',class:'go',onclick:async()=>{on.disabled=true;
+        try{await pushOn();draw()}catch(e){say(e.message);on.disabled=false}}},'เปิดแจ้งเตือน');
+      actions.replaceChildren(close,on);
+    }
+  }
+  draw().catch(e=>say(e.message));
 }
 
 // ---- start
