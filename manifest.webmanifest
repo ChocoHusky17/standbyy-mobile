@@ -1,0 +1,16 @@
+{
+  "name": "Standby.y Inbox",
+  "short_name": "Standby.y",
+  "description": "กล่องข้อความลูกค้าสำหรับแอดมิน Standby.y",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fffaee",
+  "theme_color": "#742923",
+  "lang": "th",
+  "icons": [
+    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png"}
+  ]
+}
