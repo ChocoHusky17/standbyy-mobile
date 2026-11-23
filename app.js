@@ -863,7 +863,7 @@ async function openPortfolio(pick){
   const chips=h('div',{class:'filters'});
   // Pinch the grid like the Photos app: fewer, larger pictures when spreading, more and smaller when pinching in.
   let cols=3;try{cols=Math.min(6,Math.max(1,Number(localStorage.getItem('standbyy.pcols'))||3))}catch(e){}
-  const applyCols=()=>{grid.style.gridTemplateColumns='repeat('+cols+',1fr)';grid.classList.toggle('nocap',cols>=5);grid.classList.toggle('bigcap',cols<=2);try{localStorage.setItem('standbyy.pcols',String(cols))}catch(e){}};
+  const applyCols=()=>{grid.style.columnCount=String(cols);grid.classList.toggle('nocap',cols>=5);grid.classList.toggle('bigcap',cols<=2);try{localStorage.setItem('standbyy.pcols',String(cols))}catch(e){}};
   applyCols();
   let d0=null;
   const dist=t=>Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
