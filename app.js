@@ -178,11 +178,18 @@ try{
 function showNetErr(e){const n=document.getElementById('neterr');if(n)n.textContent=e.message}
 function totalUnread(){return S.state?S.state.conversations.reduce((n,c)=>n+(c.unread_count||0),0):0}
 function updateTitle(){const n=totalUnread();document.title=n?'('+n+') Standby.y':'Standby.y'}
+// LINE's monthly message allowance: when it is used up the app says so before anyone tries to send.
+const QUOTA_MSG='โควต้าข้อความ LINE เดือนนี้เต็มแล้ว ส่งจากแอปไม่ได้จนถึงเดือนหน้า — ตอบลูกค้าใน LINE OA';
+async function checkQuota(){
+  try{const q=await apiGet('/v1/line/quota');const full=q.type==='limited'&&q.used>=q.limit;
+    if(full!==!!S.quotaFull){S.quotaFull=full;if(S.chat)refreshSend();else if(listEls)fillList()}}catch(e){}
+}
+setInterval(()=>{if(!document.hidden&&S.session)checkQuota()},10*60*1000);
 function startApp(){
-  S.revision=0;S.state=null;S.open=null;renderList();poll(true);checkUpdate();
+  S.revision=0;S.state=null;S.open=null;renderList();poll(true);checkUpdate();checkQuota();
   clearInterval(S.pollTimer);S.pollTimer=setInterval(()=>{if(!document.hidden)poll()},4500);
 }
-document.addEventListener('visibilitychange',()=>{if(!document.hidden&&S.session){poll();checkUpdate()}});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&S.session){poll();checkUpdate();checkQuota()}});
 
 // ---- chat list
 function lastMs(c){const m=c.messages&&c.messages[0];return ts(m&&m.created)||ts(c.last_inbound)}
@@ -270,6 +277,9 @@ function renderList(){
 function fillList(){
   const {list}=listEls;
   refreshBadges();
+  let qn=document.getElementById('quotanote');
+  if(S.quotaFull&&!qn&&listEls.net){qn=h('div',{class:'note err',id:'quotanote'},'โควต้าข้อความ LINE เดือนนี้เต็มแล้ว ตอบลูกค้าใน LINE OA ',h('a',{class:'oalink',href:'https://chat.line.biz/',target:'_blank',rel:'noopener noreferrer'},'เปิด LINE OA Manager'));listEls.net.before(qn)}
+  else if(!S.quotaFull&&qn)qn.remove();
   const sb=document.getElementById('shiftbtn');if(sb)sb.textContent=onDuty()?'🟢 เข้าเวร':'⚪ ออกเวร';
   if(!S.state){list.replaceChildren(h('div',{class:'empty'},'กำลังโหลด…'));return}
   const items=visibleList();
@@ -358,6 +368,7 @@ function sendBlock(){
   if(!S.state.lineSendingEnabled)return 'การส่งข้อความ LINE ปิดอยู่';
   if(!c)return 'ไม่พบแชท';
   if(c.status==='closed')return 'แชทนี้ปิดแล้ว';
+  if(S.quotaFull)return QUOTA_MSG;
   if(c.owner&&c.owner!==S.session.id)return 'แชทนี้เป็นของ '+adminName(c.owner)+' อ่านได้ แต่ส่งไม่ได้';
   return '';
 }
@@ -366,7 +377,13 @@ function refreshSend(){
   const why=sendBlock();
   e.send.disabled=!!why||S.sending||!e.ta.value.trim();
   e.ta.disabled=!!why&&why!=='กำลังโหลด…'&&false;
-  if(why){e.note.textContent=why;e.note.style.display=''}else e.note.style.display='none';
+  if(why){
+    e.note.className=why===QUOTA_MSG?'note err':'note';
+    e.note.replaceChildren(why);
+    if(why===QUOTA_MSG){const c=conv(S.open);const url=c&&c.line_chat_url&&/^https:\/\/chat\.line\.biz\//.test(c.line_chat_url)?c.line_chat_url:'https://chat.line.biz/';
+      e.note.append(h('a',{class:'oalink',href:url,target:'_blank',rel:'noopener noreferrer'},c&&c.line_chat_url?'เปิดแชทนี้ใน LINE OA':'เปิด LINE OA Manager'))}
+    e.note.style.display='';
+  }else e.note.style.display='none';
 }
 function noteChat(t){const e=S.chat&&S.chat.els;if(e){e.note.textContent=t;e.note.className='note err';e.note.style.display=''}}
 function updateChat(){
@@ -539,7 +556,7 @@ function askSend(){
       toast('ส่งแล้ว');
       await poll(true);if(S.chat)fetchNew();
     }catch(err){
-      overlay.remove();noteChat(err.message||'ส่งไม่สำเร็จ');
+      overlay.remove();if(err.status===429&&/โควต้า/.test(err.message||'')){S.quotaFull=true}else noteChat(err.message||'ส่งไม่สำเร็จ');
     }finally{S.sending=false;refreshSend()}
   };
   document.body.append(overlay);

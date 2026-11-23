@@ -190,3 +190,4 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .pgrid.nocap .pcell span{display:none}
 .pgrid{-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
 .qbar{height:10px;border-radius:999px;background:var(--line);overflow:hidden}.qbar div{height:100%;background:var(--brand)}
+.oalink{display:inline-block;margin-left:6px;font-weight:700;color:var(--brand);text-decoration:underline;padding:6px 0}
