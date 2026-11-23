@@ -132,7 +132,7 @@ function renderList(){
     const list=h('div',{class:'list'});
     const net=h('div',{class:'note err',id:'neterr',style:'display:none'});
     root.replaceChildren(
-      h('div',{class:'bar'},h('h1',null,'แชทลูกค้า',h('small',null,(s.name||s.id)+' · v3')),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
+      h('div',{class:'bar'},h('h1',null,'แชทลูกค้า',h('small',null,(s.name||s.id)+' · v4')),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
       tabs,h('div',{class:'search'},search),net,list);
     listEls={list,tabs,net};
   }
@@ -235,16 +235,60 @@ function markRead(){
   if(lastRead===S.open+':'+cursor)return;lastRead=S.open+':'+cursor;
   api('/v1/read',{id:S.open,cursor}).then(()=>{c.unread_count=0;updateTitle()}).catch(()=>{lastRead=null});
 }
+// pictures: fetched with the session and kept as object addresses (the page never puts a token in an address)
+const pics=new Map();
+function loadPic(id,original){
+  const k=id;if(pics.has(k))return pics.get(k);
+  const p=authed(async()=>{
+    const r=await fetch(API+'/v1/message-image?id='+encodeURIComponent(id),{headers:{Authorization:'Bearer '+S.session.token},cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer'});
+    if(!r.ok)throw new ApiError(r.status,'เปิดรูปไม่ได้');
+    return URL.createObjectURL(await r.blob());
+  }).catch(e=>{pics.delete(k);throw e});
+  pics.set(k,p);return p;
+}
+function picNode(m){
+  const img=h('img',{class:'pic',alt:'รูปภาพ',loading:'lazy'});
+  const box=h('div',{class:'picbox'},img);
+  const fail=()=>{box.replaceChildren(h('button',{type:'button',class:'older',onclick:()=>{pics.delete(m.id);box.replaceChildren(picNode(m))}},'รูปยังไม่พร้อม แตะเพื่อลองใหม่'))};
+  if(m.media_id){loadPic(m.id).then(u=>{img.src=u;img.onclick=()=>viewPic(u)}).catch(fail)}
+  else if(typeof m.body==='string'&&/^https:\/\//.test(m.body)){img.referrerPolicy='no-referrer';img.src=m.body;img.onclick=()=>viewPic(m.body);img.onerror=fail}
+  else fail();
+  return box;
+}
+function viewPic(src){
+  const o=h('div',{class:'overlay viewer',onclick:()=>o.remove()},h('img',{src,alt:'รูปภาพ'}),h('button',{type:'button',class:'viewclose'},'✕'));
+  document.body.append(o);
+}
+function stickerNode(m){
+  const d=m.sticker_data||{};
+  const id=String(d.stickerID||d.sticker_id||'');
+  if(!/^[0-9]{1,20}$/.test(id))return h('div',{class:'bubble media'},'สติกเกอร์');
+  return h('img',{class:'sticker',alt:'สติกเกอร์',referrerPolicy:'no-referrer',loading:'lazy',src:'https://stickershop.line-scdn.net/stickershop/v1/sticker/'+id+'/android/sticker.png'});
+}
+function jumpTo(id){
+  const box=S.chat&&S.chat.els&&S.chat.els.msgs;
+  const el=box&&box.querySelector('[data-mid="'+CSS.escape(id)+'"]');
+  if(!el){toast('ข้อความนั้นเก่ากว่าที่โหลดไว้ กด "โหลดข้อความเก่ากว่า"');return}
+  el.scrollIntoView({block:'center',behavior:'smooth'});
+  el.classList.add('flash');setTimeout(()=>el.classList.remove('flash'),1600);
+}
 function bubble(m){
   const media=m.kind&&m.kind!=='text';
-  const label=m.kind==='image'?'📷 รูปภาพ (ดูได้เร็ว ๆ นี้)':m.kind==='sticker'?'สติกเกอร์':m.kind==='file'?'📎 '+(m.file_name||'ไฟล์'):m.kind==='video'?'🎬 วิดีโอ':m.kind==='audio'?'🎤 เสียง':null;
+  const label=m.kind==='file'||m.kind==='file_unsupported'?'📎 '+(m.file_name||'ไฟล์'):m.kind==='video'?'🎬 วิดีโอ':m.kind==='audio'?'🎤 เสียง':null;
+  const isPic=m.kind==='image'||m.kind==='line_image';
   const kids=[];
-  if(m.reply_to&&m.reply_to.body)kids.push(h('div',{class:'quote'},String(m.reply_to.body)));
-  const text=m.body||(media?label:'');
-  kids.push(text);
+  if(m.reply_to){
+    const t=S.chat&&S.chat.messages.find(x=>x.id===m.reply_to);
+    const snip=t?(t.kind==='image'||t.kind==='line_image'?'📷 รูปภาพ':t.kind==='sticker'?'สติกเกอร์':(t.body||'')):'ข้อความที่ตอบกลับ';
+    kids.push(h('button',{type:'button',class:'quote',onclick:()=>jumpTo(m.reply_to)},snip));
+  }
+  let main;
+  if(isPic)main=picNode(m);
+  else if(m.kind==='sticker')main=stickerNode(m);
+  else main=h('div',{class:'bubble'+(media&&!m.body?' media':'')},m.body||label||'');
   const who=m.direction==='outbound'?(m.bot?h('span',{class:'bot'},'บอท · '):(m.sender?m.sender+' · ':'')):'';
-  return h('div',{class:'msg '+(m.direction==='outbound'?'out':'in')},
-    h('div',{class:'bubble'+(media&&!m.body?' media':'')},kids),
+  return h('div',{class:'msg '+(m.direction==='outbound'?'out':'in'),'data-mid':m.id},
+    kids.length?h('div',{class:'bubble'},kids,main.className==='bubble'?main.textContent:main):main,
     h('div',{class:'meta'},who,hm(ts(m.created)||Date.now())));
 }
 function drawMessages(toBottom){

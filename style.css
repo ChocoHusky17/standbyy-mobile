@@ -66,3 +66,12 @@ button{font:inherit;color:inherit}
 .sheet .actions button:disabled{opacity:.6}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(90px + var(--bottom));background:var(--ink);color:var(--cream);padding:8px 14px;border-radius:999px;font-size:14px;z-index:20}
 @media (prefers-color-scheme:dark){:root{color-scheme:light}}
+.quote{display:block;background:transparent;border-top:0;border-right:0;border-bottom:0;text-align:left;font:inherit;font-size:13px;width:100%}
+.pic{display:block;max-width:min(240px,70vw);max-height:320px;border-radius:14px;border:1px solid var(--line);background:var(--tint);min-width:80px;min-height:60px}
+.picbox{display:flex}
+.sticker{width:120px;height:120px;object-fit:contain}
+.viewer{align-items:center;justify-content:center;background:rgba(0,0,0,.9)}
+.viewer img{max-width:100%;max-height:100%;object-fit:contain}
+.viewclose{position:absolute;top:calc(12px + var(--top));right:14px;background:rgba(255,255,255,.2);color:#fff;border:0;border-radius:50%;width:36px;height:36px;font-size:18px}
+.flash .bubble,.flash .pic{outline:3px solid var(--brand);transition:outline .3s}
+@keyframes none{}
