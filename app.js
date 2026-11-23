@@ -4,7 +4,7 @@ const SB='https://tuherrvhmvajrtwavqmv.supabase.co';
 const API=SB+'/functions/v1/inbox-api';
 const KEY='standbyy.session';
 const root=document.getElementById('app');
-const S={team:null,teamUnread:0,teamTick:0,session:null,revision:0,state:null,filter:'all',search:'',open:null,chat:null,pollTimer:null,sending:false};
+const S={ord:null,team:null,teamUnread:0,teamTick:0,session:null,revision:0,state:null,filter:'all',search:'',open:null,chat:null,pollTimer:null,sending:false};
 
 // ---- small helpers
 function h(tag,props,...kids){
@@ -95,7 +95,7 @@ async function poll(force){
     const r=await rpc('inbox_poll_summary',{p_revision:force?0:S.revision});
     if(r.state){S.state=r.state;S.revision=r.revision}
     if(S.state&&r.waits)for(const c of S.state.conversations)if(r.waits[c.id]!=null)c.waiting_seconds=r.waits[c.id];
-    if(S.team)updateTeam();else if(S.open)updateChat();else{renderList();if(S.teamTick++%3===0)teamPeek()}
+    if(S.team)updateTeam();else if(S.ord){}else if(S.open)updateChat();else{renderList();if(S.teamTick++%3===0)teamPeek()}
     updateTitle();
   }catch(e){if(e.status!==401)showNetErr(e)}
 }
@@ -144,11 +144,11 @@ function renderList(){
   const s=S.session;if(!s)return;
   if(!listEls||!root.contains(listEls.list)){
     const search=h('input',{type:'search',placeholder:'ค้นหาชื่อลูกค้าหรือข้อความ',value:S.search,oninput:e=>{S.search=e.target.value;fillList();serverSearch()}});
-    const tabs=h('div',{class:'tabs'},[['all','ทั้งหมด'],['mine','ของฉัน'],['waiting','รอตอบ']].map(([k,t])=>h('button',{type:'button','data-k':k,onclick:()=>{S.filter=k;renderList()}},t)).concat([h('button',{type:'button',id:'teamtab',onclick:openTeam},'ทีม',h('span',{class:'badge tb',style:S.teamUnread?'':'display:none'},String(S.teamUnread||'')))]));
+    const tabs=h('div',{class:'tabs'},[['all','ทั้งหมด'],['mine','ของฉัน'],['waiting','รอตอบ']].map(([k,t])=>h('button',{type:'button','data-k':k,onclick:()=>{S.filter=k;renderList()}},t)).concat([h('button',{type:'button',onclick:openOrdersTab},'ออเดอร์'),h('button',{type:'button',id:'teamtab',onclick:openTeam},'ทีม',h('span',{class:'badge tb',style:S.teamUnread?'':'display:none'},String(S.teamUnread||'')))]));
     const list=h('div',{class:'list'});
     const net=h('div',{class:'note err',id:'neterr',style:'display:none'});
     root.replaceChildren(
-      h('div',{class:'bar'},h('h1',null,'แชทลูกค้า',h('small',{id:'whoami'},(s.name||s.id)+' · v12')),h('button',{type:'button',id:'shiftbtn',onclick:toggleShift},'เวร'),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
+      h('div',{class:'bar'},h('h1',null,'แชทลูกค้า',h('small',{id:'whoami'},(s.name||s.id)+' · v13')),h('button',{type:'button',id:'shiftbtn',onclick:toggleShift},'เวร'),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
       tabs,h('div',{class:'search'},search),net,list);
     listEls={list,tabs,net};
   }
@@ -707,6 +707,87 @@ function openDetails(){
   document.body.append(overlay);
 }
 
+// ---- orders workspace (list, search, detail, status moves)
+const ORDER_FILTERS=[['open','เปิดอยู่'],['all','ทั้งหมด'],['inquiry','รอคอนเฟิร์ม'],['confirmed','คอนเฟิร์มแล้ว'],['designing','ออกแบบ'],['design_approved','อนุมัติแบบ'],['in_production','ผลิต'],['ready_to_ship','พร้อมส่ง'],['shipped','ส่งแล้ว'],['done','เสร็จ'],['cancelled','ยกเลิก']];
+const CHANNEL={line:'LINE',tiktok:'TikTok',ig:'IG'};
+function openOrdersTab(){
+  S.ord={q:'',status:'open',rows:[],total:0,page:1,loading:false,view:'list',timer:null};
+  listEls=null;drawOrders();loadOrders(true);
+}
+function closeOrdersTab(){S.ord=null;renderList();poll(true)}
+function drawOrders(){
+  const o=S.ord;if(!o)return;
+  const search=h('input',{type:'search',placeholder:'ค้นหาเลขออเดอร์ ชื่อ หรือเบอร์โทร',value:o.q,oninput:e=>{o.q=e.target.value;clearTimeout(o.timer);o.timer=setTimeout(()=>loadOrders(true),400)}});
+  const chips=h('div',{class:'tabs scroll'},ORDER_FILTERS.map(([k,t])=>h('button',{type:'button',class:o.status===k?'on':'','data-k':k,onclick:()=>{o.status=k;for(const b of chips.children)b.classList.toggle('on',b.dataset.k===k);loadOrders(true)}},t)));
+  o.listEl=h('div',{class:'list'});
+  root.replaceChildren(h('div',{class:'bar'},h('button',{type:'button',class:'back','aria-label':'กลับ',onclick:closeOrdersTab},'‹'),h('h1',null,'ออเดอร์',h('small',{id:'ordcount'},''))),
+    chips,h('div',{class:'search'},search),o.listEl);
+  fillOrders();
+}
+async function loadOrders(reset){
+  const o=S.ord;if(!o||o.loading&&!reset)return;
+  if(reset){o.page=1;o.rows=[]}
+  o.loading=true;fillOrders();
+  const mine=o;
+  try{
+    const r=await rpc('inbox_order_list',{p_query:o.q.trim(),p_status:o.status,p_channel:'all',p_page:o.page,p_sort:'needed',p_desc:true});
+    if(S.ord!==mine)return;
+    if(reset)o.rows=[];
+    o.rows.push(...r.rows);o.total=r.total;o.error='';
+  }catch(e){if(S.ord===mine)o.error=e.message}
+  if(S.ord===mine){o.loading=false;fillOrders()}
+}
+function fillOrders(){
+  const o=S.ord;if(!o||!o.listEl||o.view!=='list')return;
+  const cnt=document.getElementById('ordcount');if(cnt)cnt.textContent=o.total?o.total+' รายการ':'';
+  const nodes=o.rows.map(r=>h('button',{type:'button',class:'row',onclick:()=>openOrderDetail(r.id)},
+    h('div',{class:'rowmain'},
+      h('div',{class:'rowtop'},h('div',{class:'rowname'},r.order_no+' · '+(r.customer_name||'')),h('div',{class:'rowtime'},baht(r.total))),
+      h('div',{class:'rowbottom'},h('span',{class:'chip'},STATUS[r.status]||r.status),h('span',{class:'chip'+(r.payment_status==='paid'?'':' wait')},PAY[r.payment_status]||'ยังไม่ชำระ'),
+        h('span',{class:'rowpreview'},(CHANNEL[r.source_channel]||r.source_channel||'')+' · ส่งของ '+dateTh(r.needed_by_date))))));
+  if(o.error)nodes.unshift(h('div',{class:'note err'},o.error));
+  if(o.loading)nodes.push(h('div',{class:'empty'},'กำลังโหลด…'));
+  else if(!o.rows.length&&!o.error)nodes.push(h('div',{class:'empty'},'ไม่พบออเดอร์'));
+  else if(o.rows.length<o.total)nodes.push(h('button',{type:'button',class:'older',style:'margin:12px auto;display:block',onclick:()=>{o.page++;loadOrders(false)}},'โหลดเพิ่ม'));
+  o.listEl.replaceChildren(...nodes);
+}
+async function openOrderDetail(id){
+  const o=S.ord;if(!o)return;o.view='detail';
+  const body=h('div',{class:'ordersbody full'},h('div',{class:'empty'},'กำลังโหลด…'));
+  root.replaceChildren(h('div',{class:'bar'},h('button',{type:'button',class:'back','aria-label':'กลับ',onclick:()=>{o.view='list';drawOrders();fillOrders();loadOrders(true)}},'‹'),h('h1',null,'ออเดอร์')),body);
+  async function draw(){
+    try{
+      const [d,opt]=await Promise.all([rpc('inbox_order_detail',{p_order:id}),rpc('inbox_order_status_options',{p_order:id})]);
+      if(S.ord!==o||o.view!=='detail')return;
+      const nodes=[orderCard(d)];
+      const info=[];
+      if(d.design_approved_planned)info.push(['อนุมัติแบบ (แผน)',dateTh(d.design_approved_planned)]);
+      if(d.ship_by_planned)info.push(['วันส่งของ (แผน)',dateTh(d.ship_by_planned)]);
+      if(d.priority&&d.priority!=='normal')info.push(['ความสำคัญ',d.priority]);
+      if(info.length)nodes.push(h('div',{class:'ocard'},info.map(([k,v])=>h('div',{class:'kv'},h('span',null,k),h('b',null,v)))));
+      nodes.push(statusBlock(d,opt,draw));
+      if(d.conversation_id&&conv(d.conversation_id))nodes.push(h('button',{type:'button',class:'menuitem',onclick:()=>{S.ord=null;openChat(d.conversation_id)}},'💬 เปิดแชทลูกค้า'));
+      body.replaceChildren(...nodes);
+    }catch(e){body.replaceChildren(h('div',{class:'empty'},e.message))}
+  }
+  draw();
+}
+function statusBlock(d,opt,redraw){
+  const box=h('div',{class:'ocard'},h('b',null,'สถานะงาน: '+(opt.status_label||STATUS[d.status])));
+  const msg=h('div',{class:'note err',style:'display:none'});
+  const move=async(to,label,reason)=>{
+    if(!confirm((to==='cancelled'?'ยกเลิก ':'เปลี่ยน ')+d.order_no+(to==='cancelled'?'?':' เป็น '+label+'?')))return;
+    try{await rpc('inbox_set_order_status',{p_order:d.id,p_expected:opt.status,p_to:to,p_reason:reason||null});toast('เปลี่ยนสถานะแล้ว');redraw()}
+    catch(e){msg.textContent=e.message;msg.style.display='';redraw&&setTimeout(()=>{},0)}
+  };
+  if(opt.next){const b=h('button',{type:'button',class:'sumbtn',disabled:opt.next_blockers.length>0,onclick:()=>move(opt.next,opt.next_label)},'เปลี่ยนเป็น '+opt.next_label);box.append(b);
+    if(opt.next_blockers.length)box.append(h('div',{class:'note'},'ยังขาด: '+opt.next_blockers.join(' · ')))}
+  if(opt.can_restore){if(opt.cancel_reason)box.append(h('div',{class:'meta'},'เหตุผลที่ยกเลิก: '+opt.cancel_reason));box.append(h('button',{type:'button',class:'sumbtn',onclick:()=>move('confirmed','คอนเฟิร์มแล้ว')},'กลับมาใช้งาน (คอนเฟิร์มแล้ว)'))}
+  if(opt.previous)box.append(h('button',{type:'button',class:'menuitem',disabled:opt.previous_blockers.length>0,onclick:()=>move(opt.previous,opt.previous_label)},'ย้อนเป็น '+opt.previous_label));
+  if(opt.can_cancel)box.append(h('button',{type:'button',class:'menuitem danger',onclick:()=>{const r=prompt('เหตุผลที่ยกเลิก (จำเป็น)');if(r&&r.trim())move('cancelled','ยกเลิก',r.trim().slice(0,500))}},'ยกเลิกงาน…'));
+  box.append(msg);return box;
+}
+
 // ---- orders linked to this chat (read only; editing stays in the Mac app)
 const baht=n=>Number(n||0).toLocaleString('th-TH',{minimumFractionDigits:0,maximumFractionDigits:2})+' บาท';
 const STATUS={inquiry:'รอคอนเฟิร์ม',confirmed:'คอนเฟิร์มแล้ว',designing:'กำลังออกแบบ',design_approved:'อนุมัติแบบแล้ว',in_production:'กำลังผลิต',ready_to_ship:'พร้อมส่ง',shipped:'ส่งออกแล้ว',done:'จัดส่งเรียบร้อย',cancelled:'ยกเลิก'};
@@ -725,7 +806,7 @@ function orderCard(o){
     o.rush_fee?row('ค่างานด่วน',baht(o.rush_fee)):null,
     o.shipping_fee?row('ค่าส่ง',baht(o.shipping_fee)):null,
     row('รวม',baht(o.total)),
-    h('button',{type:'button',class:'sumbtn',onclick:ev=>makeSummary(o,ev.target)},'สรุปรายการเป็นรูป + QR'));
+    S.open?h('button',{type:'button',class:'sumbtn',onclick:ev=>makeSummary(o,ev.target)},'สรุปรายการเป็นรูป + QR'):null);
 }
 async function openOrders(){
   const id=S.open;
