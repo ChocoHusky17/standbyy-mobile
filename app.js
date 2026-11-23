@@ -181,7 +181,7 @@ function renderList(){
     const list=h('div',{class:'list'});
     const net=h('div',{class:'note err',id:'neterr',style:'display:none'});
     root.replaceChildren(
-      h('div',{class:'bar'},h('h1',null,S.section==='mine'?'ข้อความของฉัน':'กล่องข้อความ',h('small',{id:'whoami'},(s.name||s.id)+' · v15')),h('button',{type:'button',id:'shiftbtn',onclick:toggleShift},'เวร'),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
+      h('div',{class:'bar'},h('h1',null,S.section==='mine'?'ข้อความของฉัน':'กล่องข้อความ',h('small',{id:'whoami'},(s.name||s.id)+' · v16')),h('button',{type:'button',id:'shiftbtn',onclick:toggleShift},'เวร'),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
       tabs,h('div',{class:'search'},search,wait),net,list);
     listEls={list,tabs,net};
   }
@@ -766,10 +766,18 @@ function pubUrl(path){
   if(path.startsWith('/')||path.includes('..'))return null;
   return SB+'/storage/v1/object/public/portfolio/'+path.split('/').map(encodeURIComponent).join('/');
 }
+const assetPics=new Map();
+function isLocalPath(p){return typeof p==='string'&&p.startsWith('/')&&!p.includes('..')&&/\.(jpg|png)$/i.test(p)}
+function assetBlob(path){
+  const name='sheet-'+path.split('/').pop();
+  if(!assetPics.has(name))assetPics.set(name,authed(async()=>{const r=await fetch(API+'/v1/asset?name='+encodeURIComponent(name),{headers:{Authorization:'Bearer '+S.session.token},cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer'});
+    if(!r.ok)throw new ApiError(r.status,'โหลดรูปไม่ได้');return r.blob()}).catch(e=>{assetPics.delete(name);throw e}));
+  return assetPics.get(name);
+}
 async function openPortfolio(pick){
-  const st={type:'all',tag:'all',lib:null};
+  const st={type:'all',size:null,kind:null,tags:new Set(),tagOpen:false,lib:null};
   const grid=h('div',{class:'pgrid'},h('div',{class:'empty'},'กำลังโหลด…'));
-  const chips=h('div',{class:'tabs scroll'});
+  const chips=h('div',{class:'filters'});
   let overlay=null;
   if(pick){
     overlay=h('div',{class:'overlay viewer filelayer'},h('div',{class:'pickhead'},h('b',null,'เลือกรูปส่งเข้าแชท'),h('button',{type:'button',onclick:()=>overlay.remove()},'✕')),chips,grid);
@@ -778,23 +786,42 @@ async function openPortfolio(pick){
     S.ph='portfolio';
     root.replaceChildren(h('div',{class:'bar'},h('h1',null,'คลังผลงาน')),menuTabs('portfolio'),chips,grid);
   }
+  const KINDS=[['portfolio','ผลงานจริง'],['price_sheet','ตารางราคา'],['size_guide','เทียบขนาด']];
   const draw=()=>{
     const lib=st.lib;if(!lib)return;
-    chips.replaceChildren(...[['all','ทั้งหมด'],...lib.types.map(t=>[t.id,t.name])].map(([k,t])=>h('button',{type:'button',class:st.type===k?'on':'',onclick:()=>{st.type=k;draw()}},t)));
-    const items=lib.images.filter(i=>(st.type==='all'||i.product_type_id===st.type)&&pubUrl(i.thumb_url||i.file_url));
+    const usable=i=>pubUrl(i.thumb_url||i.file_url)||isLocalPath(i.file_url);
+    const byType=lib.images.filter(i=>usable(i)&&(st.type==='all'||i.product_type_id===st.type));
+    const chip=(text,on,fn,n,dim)=>h('button',{type:'button',class:'fchip'+(on?' on':'')+(dim?' dim':''),onclick:fn},text+(n!=null?' '+n:''));
+    const row=(label,nodes)=>h('div',{class:'frow'},h('span',{class:'flabel'},label),h('div',{class:'tabs scroll inline'},nodes));
+    const type=lib.types.find(t=>t.id===st.type);
+    const tagCount=new Map();lib.images.forEach(i=>(i.tags||[]).forEach(t=>{if(t)tagCount.set(t,(tagCount.get(t)||0)+1)}));
+    const allTags=[...tagCount.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0])).map(x=>x[0]);
+    const rows=[
+      h('div',{class:'tabs scroll'},[chip('ทั้งหมด',st.type==='all',()=>{st.type='all';st.size=null;draw()}),...lib.types.map(t=>chip(t.name,st.type===t.id,()=>{st.type=t.id;st.size=null;draw()})),
+        chip('🏷 แท็ก'+(st.tags.size?' ('+st.tags.size+')':''),st.tagOpen||st.tags.size>0,()=>{st.tagOpen=!st.tagOpen;draw()})]),
+      row('ประเภทรูป',[chip('ทุกประเภท',!st.kind,()=>{st.kind=null;draw()}),...KINDS.map(([k,t])=>{const n=byType.filter(i=>i.kind===k).length;return chip(t,st.kind===k,()=>{st.kind=st.kind===k?null:k;draw()},n,!n)})])];
+    if(type&&type.sizes&&type.sizes.length)rows.push(row('ขนาด',[chip('ทุกขนาด',!st.size,()=>{st.size=null;draw()}),...type.sizes.map(z=>{const n=byType.filter(i=>i.product_size_id===z.id).length;return chip(z.label,st.size===z.id,()=>{st.size=st.size===z.id?null:z.id;draw()},n,!n)})]));
+    if(st.tagOpen)rows.push(h('div',{class:'frow tagrow'},allTags.length?allTags.map(t=>chip(t,st.tags.has(t),()=>{st.tags.has(t)?st.tags.delete(t):st.tags.add(t);draw()})).concat(st.tags.size?[chip('ล้างแท็ก',false,()=>{st.tags.clear();draw()})]:[]):[h('span',{class:'flabel'},'ยังไม่มีแท็ก')]));
+    chips.replaceChildren(...rows);
+    const items=byType.filter(i=>(!st.size||i.product_size_id===st.size)&&(!st.kind||i.kind===st.kind)&&(!st.tags.size||(i.tags||[]).some(t=>st.tags.has(t))));
     grid.replaceChildren(...(items.length?items.map(i=>{
-      const img=h('img',{src:pubUrl(i.thumb_url||i.file_url),alt:i.caption||i.type_name||'ผลงาน',loading:'lazy',referrerPolicy:'no-referrer'});
-      return h('button',{type:'button',class:'pcell',onclick:()=>pick?sendPortfolio(i,overlay):viewPic(pubUrl(i.file_url)||img.src)},img,h('span',null,i.caption||[i.type_name,i.size_label].filter(Boolean).join(' ')));
-    }):[h('div',{class:'empty'},'ไม่มีรูป')]));
+      const local=isLocalPath(i.file_url);
+      const img=h('img',{alt:i.caption||i.type_name||'ผลงาน',loading:'lazy',referrerPolicy:'no-referrer'});
+      let fullUrl=null;
+      if(local)assetBlob(i.file_url).then(b=>{fullUrl=URL.createObjectURL(b);img.src=fullUrl}).catch(()=>{});
+      else img.src=pubUrl(i.thumb_url||i.file_url);
+      return h('button',{type:'button',class:'pcell',onclick:()=>pick?sendPortfolio(i,overlay):viewPic(local?fullUrl:(pubUrl(i.file_url)||img.src))},img,h('span',null,i.caption||[i.type_name,i.size_label].filter(Boolean).join(' ')));
+    }):[h('div',{class:'empty'},'ไม่มีรูปที่ตรงกับตัวกรอง')]));
   };
   try{st.lib=await rpc('inbox_portfolio',{});if(!pick&&S.ph!=='portfolio')return;draw()}
   catch(e){grid.replaceChildren(h('div',{class:'empty'},e.message))}
 }
 async function sendPortfolio(item,overlay){
   try{
-    const r=await fetch(pubUrl(item.file_url),{credentials:'omit',referrerPolicy:'no-referrer'});
-    if(!r.ok)throw new Error('โหลดรูปไม่ได้');
-    const blob=await r.blob();
+    let blob;
+    if(isLocalPath(item.file_url))blob=await assetBlob(item.file_url);
+    else{const r=await fetch(pubUrl(item.file_url),{credentials:'omit',referrerPolicy:'no-referrer'});
+      if(!r.ok)throw new Error('โหลดรูปไม่ได้');blob=await r.blob()}
     overlay.remove();
     await askSendImage(blob,false,()=>{rpc('inbox_portfolio_used',{p_ids:[item.id]}).catch(()=>{})});
   }catch(e){toast(e.message||'ส่งรูปไม่ได้')}
