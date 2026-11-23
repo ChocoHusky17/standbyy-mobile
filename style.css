@@ -265,3 +265,33 @@ body.brandfont .moreitem b{font-size:20px}
   .avatar{background:#5a2420}
   input,textarea,select{color-scheme:dark}
 }
+
+/* ===== portfolio v37 ===== */
+.pgrid .pbox{height:auto!important;padding-bottom:0!important;aspect-ratio:1/1}
+.noscrollbar{scrollbar-width:none}.noscrollbar::-webkit-scrollbar{display:none}
+.tabs.scroll{scrollbar-width:none}.tabs.scroll::-webkit-scrollbar{display:none}
+.ptypes{display:flex;align-items:center;gap:8px;background:var(--surface);border-bottom:1px solid var(--line);padding-right:12px;flex-shrink:0}
+.ptypes .tabs{flex:1;min-width:0;border:0;background:transparent}
+.filterbtn{flex-shrink:0;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:8px 14px;font-size:14px;font-weight:600;min-height:40px}
+.filterbtn.on{background:var(--brand);border-color:var(--brand);color:var(--onbrand)}
+.pinfo{font-size:12px;color:var(--muted);padding:6px 14px;background:var(--surface);flex-shrink:0}
+.pcell{position:relative}
+.pcheck{position:absolute;top:6px;right:6px;width:26px;height:26px;border-radius:50%;border:2px solid #fff;background:rgba(0,0,0,.25);color:#fff;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.35)}
+.pcell.sel .pcheck{background:var(--brand);border-color:#fff}
+.pcell.sel .pbox{outline:3px solid var(--brand);outline-offset:-3px}
+.pcell.sel img{opacity:.85}
+.psend{display:flex;align-items:center;gap:10px;padding:10px 14px calc(10px + var(--bottom));background:var(--surface);border-top:1px solid var(--line);flex-shrink:0}
+.psend .pcount{flex:1;font-size:14px;color:var(--muted)}
+.primary.small{width:auto;min-height:44px;padding:0 20px;margin:0;font-size:15px}
+.pstrip{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}.pstrip img{width:64px;height:64px;object-fit:cover;border-radius:8px;flex-shrink:0;background:var(--tint)}
+.fsec{display:flex;flex-direction:column;gap:6px}.fwrap{display:flex;flex-wrap:wrap;gap:6px}
+.vcount{position:absolute;bottom:calc(20px + var(--bottom));left:0;right:0;text-align:center;color:#fff;font-size:14px;font-weight:600;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+.plibrary{background:var(--cream)!important}
+.plibrary .pgrid{background:var(--cream)}
+.pcell img{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+
+/* wrap layout: each cell has a definite width, so the square box always has its height (grid rows ignored it) */
+.pgrid{display:flex!important;flex-wrap:wrap;align-content:flex-start;align-items:flex-start;--cols:3;--gap:8px;gap:10px var(--gap)!important;grid-template-columns:none!important}
+.pgrid .pcell{flex:0 0 auto;width:calc((100% - (var(--cols) - 1) * var(--gap)) / var(--cols))!important;min-width:0}
+.pgrid.nocap{--gap:2px;gap:2px var(--gap)!important}
+.pgrid .pghint,.pgrid .empty,.pgrid .skel{width:100%}
