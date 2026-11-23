@@ -163,7 +163,7 @@ function renderLogin(msg){
       err.textContent=e.status===401?'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง':e.status===429?'ลองผิดหลายครั้งเกินไป กรุณารอ 15 นาทีแล้วลองใหม่':e.message;
       err.style.display='';btn.disabled=false;
     }
-  }},h('img',{class:'loginlogo',src:'logo-mark.png',alt:''}),h('h1',null,'Standby.y'),h('p',null,'ตอบลูกค้าและดูแลออเดอร์ของร้าน'),id,pw,err,btn);
+  }},h('div',{class:'loginhead'},h('img',{class:'loginlogo',src:'logo-mark.png',alt:''}),h('div',{class:'logintext'},h('h1',null,'Standby.y'),h('p',null,'ตอบลูกค้าและดูแลออเดอร์ของร้าน'))),id,pw,err,btn);
   root.replaceChildren(form);
 }
 

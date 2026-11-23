@@ -357,3 +357,10 @@ body.brandfont .ono,body.brandfont .oamt{font-family:FCMinimalBold,system-ui,san
   .msg.out.bot .bubble{color:var(--ink)}
   .loginlogo{background:#2a2220;box-shadow:0 0 0 4px #2a2220,0 10px 24px rgba(0,0,0,.5)}
 }
+
+/* login: logo beside the name and tagline, the group centred, room before the fields */
+.loginhead{display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:36px}
+.loginhead .loginlogo{width:72px;height:72px;border-radius:18px;padding:4px;margin:0;flex-shrink:0}
+.logintext{display:flex;flex-direction:column;gap:2px;min-width:0}
+.logintext h1{margin:0;font-size:28px;line-height:1.15}
+.logintext p{margin:0;font-size:14px;color:var(--muted)}
