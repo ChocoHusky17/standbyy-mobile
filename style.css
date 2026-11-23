@@ -121,3 +121,5 @@ button{font:inherit;color:inherit}
 .chk{display:flex;align-items:center;gap:8px;font-size:14px}.chk input{width:18px;height:18px}
 .ocard select,.ocard input[type=text],.ocard input[type=number],.ocard input[type=date],.ocard textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:16px;font-family:inherit;background:var(--surface);color:var(--ink)}
 .ocard .chk input{width:18px}
+input[type=date]{-webkit-appearance:none;appearance:none;display:block;width:100%;max-width:100%;min-width:0;min-height:44px;box-sizing:border-box;text-align:left}
+input[type=date]::-webkit-date-and-time-value{text-align:left}
