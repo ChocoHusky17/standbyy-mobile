@@ -181,7 +181,7 @@ function renderList(){
     const list=h('div',{class:'list'});
     const net=h('div',{class:'note err',id:'neterr',style:'display:none'});
     root.replaceChildren(
-      h('div',{class:'bar'},h('h1',null,S.section==='mine'?'ข้อความของฉัน':'กล่องข้อความ',h('small',{id:'whoami'},(s.name||s.id)+' · v20')),h('button',{type:'button',id:'shiftbtn',onclick:toggleShift},'เวร'),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
+      h('div',{class:'bar'},h('h1',null,S.section==='mine'?'ข้อความของฉัน':'กล่องข้อความ',h('small',{id:'whoami'},(s.name||s.id)+' · v21')),h('button',{type:'button',id:'shiftbtn',onclick:toggleShift},'เวร'),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
       tabs,h('div',{class:'search'},search,wait),net,list);
     listEls={list,tabs,net};
   }
@@ -646,7 +646,6 @@ function openChatMenu(){
       if(!others.length)items.push(h('div',{class:'empty small'},'ไม่มีแอดมินคนอื่นที่เข้าเวรอยู่'));
       others.forEach(a=>items.push(btn(a.name,()=>run(()=>api('/v1/handoff',{id,owner:a.id}),'ส่งต่อให้ '+a.name+' แล้ว'))));
     }
-    items.push(btn('🧾 สร้างออเดอร์ร่างจากแชทนี้',()=>{overlay.remove();openDraftOrder()}));
     items.push(btn(c.action_required?'⚑ ยกเลิกธง "ต้องดำเนินการ"':'⚑ ติดธง "ต้องดำเนินการ"',()=>run(()=>api('/v1/action-required',{id,required:!c.action_required,version:c.action_version||1}))));
     if(Array.isArray(S.state.pinnedConversationIDs))items.push(btn(isPinned(c)?'📌 เลิกปักหมุด':'📌 ปักหมุดแชทนี้',()=>run(()=>rpc('inbox_set_chat_pin',{p_id:id,p_pinned:!isPinned(c)}))));
     if(c.line_chat_url&&/^https:\/\/chat\.line\.biz\//.test(c.line_chat_url))items.push(h('a',{class:'menuitem',href:c.line_chat_url,target:'_blank',rel:'noopener noreferrer'},'เปิดแชทใน LINE Official Account'));
@@ -912,12 +911,19 @@ async function openDraftOrder(){
   let catalog,reasons=[];
   try{catalog=await rpc('inbox_draft_catalog',{});reasons=((await rpc('inbox_quick_texts',{}).catch(()=>({}))).discount_reasons)||[]}
   catch(e){body.replaceChildren(h('div',{class:'empty'},e.message));return}
-  const sizeSel=h('select',null,[h('option',{value:''},'เลือกสินค้า / ขนาด'),...catalog.map(z=>h('option',{value:z.id},z.product+' · '+z.size+' · '+money2(z.price)+' บาท'))]);
+  const types=[...new Set(catalog.map(z=>z.product))];
+  const typeSel=h('select',null,[h('option',{value:''},'เลือกประเภทสินค้า'),...types.map(t=>h('option',{value:t},t))]);
+  const sizeSel=h('select',{disabled:true},[h('option',{value:''},'เลือกขนาด')]);
+  typeSel.onchange=()=>{
+    const list=catalog.filter(z=>z.product===typeSel.value);
+    sizeSel.replaceChildren(h('option',{value:''},list.length?'เลือกขนาด':'เลือกประเภทสินค้าก่อน'),...list.map(z=>h('option',{value:z.id},z.size+' · '+money2(z.price)+' บาท')));
+    sizeSel.disabled=!list.length;
+  };
   const qty=h('input',{type:'number',inputmode:'numeric',min:'1',max:'999',value:'1'});
   const custom=h('input',{type:'checkbox'});
   const cName=h('input',{type:'text',placeholder:'ชื่อสินค้า'}),cSize=h('input',{type:'text',placeholder:'ขนาด'}),cPrice=h('input',{type:'number',inputmode:'decimal',placeholder:'ราคาต่อชิ้น (บาท)'});
   const customBox=h('div',{style:'display:none;gap:8px;flex-direction:column'},cName,cSize,cPrice);
-  custom.onchange=()=>{customBox.style.display=custom.checked?'flex':'none';sizeSel.style.display=custom.checked?'none':''};
+  custom.onchange=()=>{customBox.style.display=custom.checked?'flex':'none';typeSel.style.display=sizeSel.style.display=custom.checked?'none':''};
   const list=h('div',{class:'items'});
   const totalEl=h('div',{class:'kv'});
   const needed=h('input',{type:'date',min:todayInput()});
@@ -942,7 +948,7 @@ async function openDraftOrder(){
       if(!cName.value.trim()||!cSize.value.trim()||!(price>=0)||cPrice.value===''){err.textContent='กรอกชื่อสินค้า ขนาด และราคาให้ครบ';err.style.display='';return}
       lines.push({custom:true,label:cName.value.trim()+' · '+cSize.value.trim(),price,quantity:q,payload:{product_name:cName.value.trim(),size_label:cSize.value.trim(),quantity:q,unit_price:price}});
       cName.value=cSize.value=cPrice.value='';
-    }else{const z=catalog.find(x=>x.id===sizeSel.value);if(!z){err.textContent='เลือกสินค้าก่อน';err.style.display='';return}
+    }else{const z=catalog.find(x=>x.id===sizeSel.value);if(!z){err.textContent=typeSel.value?'เลือกขนาดก่อน':'เลือกประเภทสินค้าและขนาดก่อน';err.style.display='';return}
       lines.push({label:z.product+' · '+z.size,price:z.price,quantity:q,payload:{size_id:z.id,quantity:q}});sizeSel.value=''}
     qty.value='1';redraw();
   };
@@ -971,7 +977,7 @@ async function openDraftOrder(){
   const fld=(t,el)=>h('label',{class:'fld'},h('span',null,t),el);
   body.replaceChildren(
     h('div',{class:'ocard'},h('b',null,'รายการสินค้า'),list,totalEl),
-    h('div',{class:'ocard'},h('b',null,'เพิ่มสินค้า'),sizeSel,customBox,h('label',{class:'chk'},custom,' ขนาดพิเศษ (กำหนดราคาเอง)'),fld('จำนวน',qty),add),
+    h('div',{class:'ocard'},h('b',null,'เพิ่มสินค้า'),fld('ประเภท',typeSel),fld('ขนาด',sizeSel),customBox,h('label',{class:'chk'},custom,' ขนาดพิเศษ (กำหนดราคาเอง)'),fld('จำนวน',qty),add),
     h('div',{class:'ocard'},h('b',null,'ส่วนลด'),dType,dVal,dReason,dl),
     h('div',{class:'ocard'},h('b',null,'วันใช้งานและการจัดส่ง'),fld('วันที่ลูกค้าต้องการใช้งาน',needed),fld('รับสินค้า',ship)),
     h('div',{class:'ocard'},h('b',null,'โน้ตออเดอร์'),note),
@@ -1078,7 +1084,7 @@ async function openChatOrders(){
   const list=h('div',{class:'list'},h('div',{class:'empty'},'กำลังโหลด…'));
   const backToChat=()=>{S.ord=null;if(S.chat){buildChat();drawMessages(true)}else openChat(chat)};
   o.backToChat=backToChat;
-  o.showList=()=>{o.view='chatlist';root.replaceChildren(h('div',{class:'bar'},h('button',{type:'button',class:'back','aria-label':'กลับ',onclick:backToChat},'‹'),h('h1',null,'ออเดอร์ของแชทนี้',h('small',null,(conv(chat)||{}).customer||''))),list)};
+  o.showList=()=>{o.view='chatlist';root.replaceChildren(h('div',{class:'bar'},h('button',{type:'button',class:'back','aria-label':'กลับ',onclick:backToChat},'‹'),h('h1',null,'ออเดอร์ของแชทนี้',h('small',null,(conv(chat)||{}).customer||'')),h('button',{type:'button','aria-label':'สร้างออเดอร์',onclick:openDraftOrder},'＋ สร้างออเดอร์')),list)};
   o.showList();
   try{
     const rows=await rpc('inbox_linked_orders',{p_conversation:chat});
@@ -1091,7 +1097,7 @@ async function openChatOrders(){
 async function openOrderDetail(id){
   const o=S.ord;if(!o)return;o.view='detail';
   const body=h('div',{class:'ordersbody full'},h('div',{class:'empty'},'กำลังโหลด…'));
-  root.replaceChildren(h('div',{class:'bar'},h('button',{type:'button',class:'back','aria-label':'กลับ',onclick:()=>{if(o.fromChat){if(o.chatRows&&o.chatRows.length>1)o.showList();else o.backToChat();return}o.view='list';drawOrders();fillOrders();loadOrders(true)}},'‹'),h('h1',null,'ออเดอร์')),body);
+  root.replaceChildren(h('div',{class:'bar'},h('button',{type:'button',class:'back','aria-label':'กลับ',onclick:()=>{if(o.fromChat){if(o.chatRows&&o.chatRows.length>1)o.showList();else o.backToChat();return}o.view='list';drawOrders();fillOrders();loadOrders(true)}},'‹'),h('h1',null,'ออเดอร์'),o.fromChat?h('button',{type:'button','aria-label':'สร้างออเดอร์',onclick:openDraftOrder},'＋ สร้างออเดอร์'):null),body);
   async function draw(){
     try{
       const [d,opt]=await Promise.all([rpc('inbox_order_detail',{p_order:id}),rpc('inbox_order_status_options',{p_order:id})]);
