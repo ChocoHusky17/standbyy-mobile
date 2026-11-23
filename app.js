@@ -132,7 +132,7 @@ function renderList(){
     const list=h('div',{class:'list'});
     const net=h('div',{class:'note err',id:'neterr',style:'display:none'});
     root.replaceChildren(
-      h('div',{class:'bar'},h('h1',null,'แชทลูกค้า',h('small',null,(s.name||s.id)+' · v7')),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
+      h('div',{class:'bar'},h('h1',null,'แชทลูกค้า',h('small',null,(s.name||s.id)+' · v8')),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
       tabs,h('div',{class:'search'},search),net,list);
     listEls={list,tabs,net};
   }
@@ -452,13 +452,18 @@ async function drawSummary(res,doc,tpl,linked){
   const account=(paras[0]||'').trim(),afterText=paras.slice(1).join('\n\n').trim();
   let qr=null;
   if(due>0&&shop.promptpay_payload){const pl=QR.promptPayPayload(shop.promptpay_payload,due);if(pl)qr=QR.encode(pl)}
+  await Promise.all([document.fonts.load('10px FCMinimal','สรุป'),document.fonts.load('bold 10px FCMinimalBold','สรุป')]);
   const cv=document.createElement('canvas'),ctx=cv.getContext('2d');
   const F=(size,bold)=>(bold?'bold ':'')+(size*(size>30?1.5:1.25))+'px '+(bold?'FCMinimalBold':'FCMinimal')+',system-ui,sans-serif';
   const innerW=W-2*PAD-2*INNER;
+  const EMO=/\p{Extended_Pictographic}/u;
+  const lineH=(l,base)=>EMO.test(l)?base+5:base;
+  const sumH=(ls,base)=>ls.reduce((n,l)=>n+lineH(l,base),0);
   // pass 1 measures, pass 2 draws: the same function with draw=false/true
   function layout(draw){
     let y=PAD;
-    const text=(t,x,yy,size,bold,color,align)=>{ctx.font=F(size,bold);ctx.fillStyle=color;ctx.textAlign=align||'left';ctx.textBaseline='alphabetic';ctx.fillText(t,x,yy)};
+    const text=(t,x,yy,size,bold,color,align)=>{ctx.font=F(size,bold);ctx.fillStyle=color;ctx.textAlign='left';ctx.textBaseline='alphabetic';
+      const w=align?ctx.measureText(t).width:0;ctx.fillText(t,align==='right'?x-w:align==='center'?x-w/2:x,yy)};
     const card=(h)=>{if(draw){ctx.fillStyle='#fff';ctx.beginPath();ctx.roundRect(PAD,y,W-2*PAD,h,12);ctx.fill()}};
     // header
     const logo=res.logo,lw=92,lh=lw*logo.height/logo.width;
@@ -491,28 +496,32 @@ async function drawSummary(res,doc,tpl,linked){
     // shipping box
     const sh=[ '🚚 วิธีจัดส่งงาน : '+shipText,'🗓️ ส่งงาน : '+delivery ];
     ctx.font=F(10,false);const shL=sh.flatMap(t=>thaiLines(ctx,t,innerW));
-    const h2=INNER*2+shL.length*14-2;card(h2);
-    if(draw)shL.forEach((l,i)=>text(l,PAD+INNER,y+INNER+11+i*14,10,false,'#000'));
+    const h2=INNER*2+sumH(shL,14)-2;card(h2);
+    if(draw){let ly=y+INNER;shL.forEach(l=>{ly+=lineH(l,14);text(l,PAD+INNER,ly-(EMO.test(l)?5:3),10,false,'#000')})}
     y+=h2+GAP;
     // payment box
     if(due>0&&qr){
       const qrSize=150,left=innerW-qrSize-12;
-      ctx.font=F(16,false);const accL=thaiLines(ctx,account,left);ctx.font=F(13,false);const nm=shop.promptpay_name||'';
-      const leftH=accL.length*21+(nm?24:0)+16;const h3=INNER*2+Math.max(qrSize+30,leftH);card(h3);
-      if(draw){let ly=y+INNER+16;accL.forEach(l=>{text(l,PAD+INNER,ly,16,false,'#000');ly+=21});
-        if(nm){ly+=2;text(nm,PAD+INNER,ly+6,13,false,GRAY);ly+=20}text('รับเงินได้จากทุกธนาคาร',PAD+INNER,ly+8,11.5,false,GRAY);
-        const qx=W-PAD-INNER-qrSize,qy=y+INNER+16,n=qr.length,cell=qrSize/(n+0);
-        text('สแกนจ่าย',qx+qrSize/2,y+INNER+9,9,true,WINE,'center');
+      ctx.font=F(16,false);const accL=thaiLines(ctx,account,left);const nm=shop.promptpay_name||'';
+      const parts=accL.map(l=>({t:l,size:16,color:'#000',h:lineH(l,21)}));
+      if(nm)parts.push({t:nm,size:13,color:GRAY,h:22,gap:4});
+      parts.push({t:'รับเงินได้จากทุกธนาคาร',size:11.5,color:GRAY,h:17,gap:6});
+      const leftH=parts.reduce((n,q)=>n+q.h+(q.gap||0),0),rightH=14+4+qrSize+4+20,contentH=Math.max(leftH,rightH);
+      const h3=INNER*2+contentH;card(h3);
+      if(draw){let ly=y+INNER+(contentH-leftH)/2;
+        for(const q of parts){ly+=(q.gap||0)+q.h;text(q.t,PAD+INNER,ly-(q.h>q.size*1.25+3?6:5),q.size,false,q.color)}
+        const qx=W-PAD-INNER-qrSize,top=y+INNER+(contentH-rightH)/2,qy=top+18,n=qr.length;
+        text('สแกนจ่าย',qx+qrSize/2,top+10,9,true,WINE,'center');
         ctx.fillStyle='#fff';ctx.fillRect(qx,qy,qrSize,qrSize);ctx.fillStyle='#000';
         const mod=qrSize/(n+8);for(let r=0;r<n;r++)for(let c=0;c<n;c++)if(qr[r][c])ctx.fillRect(qx+(c+4)*mod,qy+(r+4)*mod,mod+.4,mod+.4);
-        text(money2(due)+' บาท',qx+qrSize/2,qy+qrSize+16,14,true,'#000','center')}
+        text(money2(due)+' บาท',qx+qrSize/2,qy+qrSize+17,14,true,'#000','center')}
       y+=h3+GAP;
     }else if(due<=0){
       const h3=INNER*2-2;card(h3+8);if(draw)text('✓ ชำระครบแล้ว ขอบคุณค่ะ',W/2,y+INNER+8,11,true,'#2e7d32','center');y+=h3+8+GAP;
     }
     if(due>0){
-      if(afterText){ctx.font=F(9.5,false);const l=thaiLines(ctx,afterText,innerW);const h4=INNER*2+l.length*13;card(h4);
-        if(draw)l.forEach((t,i)=>text(t,PAD+INNER,y+INNER+10+i*13,9.5,false,'#000'));y+=h4+GAP}
+      if(afterText){ctx.font=F(9.5,false);const l=thaiLines(ctx,afterText,innerW);const h4=INNER*2+sumH(l,13);card(h4);
+        if(draw){let ly=y+INNER;l.forEach(t=>{ly+=lineH(t,13);text(t,PAD+INNER,ly-(EMO.test(t)?5:3),9.5,false,'#000')})}y+=h4+GAP}
       else if(!payment){ctx.font=F(8.5,false);const l=thaiLines(ctx,'หลังโอนแล้ว รบกวนส่งสลิปพร้อมชื่อผู้รับ เบอร์โทรศัพท์ และที่อยู่จัดส่งค่ะ',innerW);
         if(draw)l.forEach((t,i)=>text(t,W/2,y+10+i*12,8.5,false,GRAY,'center'));y+=l.length*12+GAP}
     }
