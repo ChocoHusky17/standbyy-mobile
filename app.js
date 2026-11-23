@@ -132,7 +132,7 @@ function renderList(){
     const list=h('div',{class:'list'});
     const net=h('div',{class:'note err',id:'neterr',style:'display:none'});
     root.replaceChildren(
-      h('div',{class:'bar'},h('h1',null,'แชทลูกค้า',h('small',null,(s.name||s.id)+' · v6')),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
+      h('div',{class:'bar'},h('h1',null,'แชทลูกค้า',h('small',null,(s.name||s.id)+' · v7')),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
       tabs,h('div',{class:'search'},search),net,list);
     listEls={list,tabs,net};
   }
@@ -372,9 +372,9 @@ async function shrink(file){
   throw new Error('รูปใหญ่เกินไป ลองรูปอื่น');
 }
 function blobB64(blob){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]);r.onerror=()=>rej(new Error('อ่านรูปไม่ได้'));r.readAsDataURL(blob)})}
-async function askSendImage(file){
+async function askSendImage(file,ready){
   const c=conv(S.open);if(!c||sendBlock()||S.sending)return;
-  let blob;try{blob=await shrink(file)}catch(e){noteChat(e.message);return}
+  let blob;try{blob=ready?file:await shrink(file)}catch(e){noteChat(e.message);return}
   const url=URL.createObjectURL(blob),id=S.open,requestID=uuid();
   const go=h('button',{type:'button',class:'go'},'ส่ง'),cancel=h('button',{type:'button'},'ยกเลิก');
   const close=()=>{URL.revokeObjectURL(url);overlay.remove()};
@@ -394,6 +394,138 @@ async function askSendImage(file){
   document.body.append(overlay);
 }
 
+// ---- summary picture with the PromptPay QR (same layout as the Mac app; fonts come from the server after sign-in)
+let fontsReady=null;
+function loadFonts(){
+  if(fontsReady)return fontsReady;
+  const get=name=>authed(async()=>{const r=await fetch(API+'/v1/asset?name='+name,{headers:{Authorization:'Bearer '+S.session.token},cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer'});
+    if(!r.ok)throw new ApiError(r.status,'โหลดฟอนต์ไม่ได้');return r.arrayBuffer()});
+  fontsReady=Promise.all([get('font-regular'),get('font-bold'),get('logo')]).then(async([reg,bold,logo])=>{
+    const a=new FontFace('FCMinimal',reg),b=new FontFace('FCMinimalBold',bold);
+    await Promise.all([a.load(),b.load()]);document.fonts.add(a);document.fonts.add(b);
+    const img=new Image();const url=URL.createObjectURL(new Blob([logo],{type:'image/png'}));
+    await new Promise((res,rej)=>{img.onload=res;img.onerror=()=>rej(new Error('โหลดโลโก้ไม่ได้'));img.src=url});
+    return {logo:img};
+  }).catch(e=>{fontsReady=null;throw e});
+  return fontsReady;
+}
+const fillT=(t,v)=>Object.keys(v).reduce((a,k)=>a.split('{'+k+'}').join(v[k]),t);
+const money2=n=>Number(n||0).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:2});
+const money0=n=>Math.round(Number(n||0)).toLocaleString('en-US');
+function thaiLines(ctx,text,maxW){
+  const out=[];
+  for(const para of String(text).split('\n')){
+    if(!para){out.push('');continue}
+    const seg=typeof Intl!=='undefined'&&Intl.Segmenter?[...new Intl.Segmenter('th',{granularity:'word'}).segment(para)].map(x=>x.segment):[...para];
+    let line='';
+    for(const w of seg){
+      if(ctx.measureText(line+w).width<=maxW||!line.trim()){line+=w}
+      else{out.push(line.trimEnd());line=w.trimStart()}
+    }
+    out.push(line.trimEnd());
+  }
+  return out;
+}
+async function makeSummary(o,btn){
+  btn.disabled=true;const old=btn.textContent;btn.textContent='กำลังสร้างรูป…';
+  try{
+    const [res,doc,tpl]=await Promise.all([loadFonts(),rpc('inbox_order_document',{p_order:o.id}),rpc('inbox_price_summary_settings',{})]);
+    const blob=await drawSummary(res,doc,tpl,o);
+    document.querySelector('.overlay')?.remove();
+    await askSendImage(blob,true);
+  }catch(e){btn.disabled=false;btn.textContent=old;toast(e.message||'สร้างรูปไม่ได้')}
+}
+function planned(v){if(!v||String(v).length<10)return 'รอยืนยัน';const p=String(v).slice(0,10).split('-');return p[2]+'/'+p[1]+'/'+p[0]}
+async function drawSummary(res,doc,tpl,linked){
+  const {shop,order}=doc;
+  const WINE='#742923',CREAM='#fffaee',GRAY='#736b66',W=400,PAD=20,GAP=12,INNER=14,SCALE=2.7;
+  const due=order.payment_status==='paid'?0:order.payment_status==='deposit'?Math.max(0,order.total-(order.deposit_amount||0)):order.total;
+  // shipping / delivery / payment texts from the shop's templates
+  const fee=money0(order.shipping_fee);
+  const shipLabel={ems:'EMS',grab_normal:'Grab',grab_from_customer:'Grab (ลูกค้าเรียก)',pickup:'รับที่ร้าน'}[order.shipping_method]||'รอคอนเฟิร์ม';
+  const shipText=fillT((tpl.shipping&&tpl.shipping[order.shipping_method])||shipLabel,{'ค่าส่ง':fee});
+  const delivery=planned(linked.ship_by_planned);
+  const vals={'จัดส่ง':'','ค่าส่ง':fee,'ยอดรวม':money0(order.total),'วันส่งงาน':delivery,'เลขออเดอร์':order.order_no,'รายการ':'','ส่วนลด':''};
+  const after=(tpl.with_payment||'').split('{สรุปรายการ}').slice(1).join('');
+  const payment=fillT(after,vals).trim();
+  const paras=payment.split('\n\n');
+  const account=(paras[0]||'').trim(),afterText=paras.slice(1).join('\n\n').trim();
+  let qr=null;
+  if(due>0&&shop.promptpay_payload){const pl=QR.promptPayPayload(shop.promptpay_payload,due);if(pl)qr=QR.encode(pl)}
+  const cv=document.createElement('canvas'),ctx=cv.getContext('2d');
+  const F=(size,bold)=>(bold?'bold ':'')+(size*(size>30?1.5:1.25))+'px '+(bold?'FCMinimalBold':'FCMinimal')+',system-ui,sans-serif';
+  const innerW=W-2*PAD-2*INNER;
+  // pass 1 measures, pass 2 draws: the same function with draw=false/true
+  function layout(draw){
+    let y=PAD;
+    const text=(t,x,yy,size,bold,color,align)=>{ctx.font=F(size,bold);ctx.fillStyle=color;ctx.textAlign=align||'left';ctx.textBaseline='alphabetic';ctx.fillText(t,x,yy)};
+    const card=(h)=>{if(draw){ctx.fillStyle='#fff';ctx.beginPath();ctx.roundRect(PAD,y,W-2*PAD,h,12);ctx.fill()}};
+    // header
+    const logo=res.logo,lw=92,lh=lw*logo.height/logo.width;
+    const customer=order.customer_display?'คุณ'+order.customer_display.replace(/คุณ/g,''):'';
+    const headH=Math.max(lh,customer?52:40);
+    if(draw){text('สรุปรายการ',PAD,y+22,20,true,WINE);text('ออเดอร์ '+order.order_no,PAD,y+38,9,false,GRAY);if(customer)text(customer,PAD,y+52,9,false,GRAY);
+      ctx.drawImage(logo,W-PAD-lw,y+(headH-lh)/2,lw,lh)}
+    y+=Math.max(headH,56)+GAP;
+    // items
+    const rowsH=[];let h1=INNER*2;
+    for(const it of order.items){ctx.font=F(8.5,false);const sub=it.quantity+' ชิ้น × '+money2(it.unit_price)+' บาท'+(it.note?' • '+it.note:'');
+      const subL=thaiLines(ctx,sub,innerW-70);ctx.font=F(10,true);const nameL=thaiLines(ctx,it.product+(it.size?' '+it.size:''),innerW-70);
+      const hh=nameL.length*14+subL.length*12+7;rowsH.push({it,nameL,subL,hh});h1+=hh}
+    const extra=[];
+    if(order.shipping_fee>0)extra.push(['ค่าส่ง '+(shipLabel==='รอคอนเฟิร์ม'?'':shipLabel),money2(order.shipping_fee),false]);
+    if(order.rush_fee>0)extra.push(['ค่างานเร่ง',money2(order.rush_fee),false]);
+    if(order.discount_amount>0)extra.push(['ส่วนลด','−'+money2(order.discount_amount),false]);
+    extra.push(['ยอดรวม',money2(order.total)+' บาท',true]);
+    if(order.payment_status==='deposit'){extra.push(['ชำระมัดจำแล้ว','−'+money2(order.deposit_amount||0),false]);extra.push(['ยอดที่ต้องโอน',money2(due)+' บาท',true])}
+    h1+=9+extra.reduce((n,e)=>n+(e[2]?19:15),0);
+    card(h1);
+    if(draw){let yy=y+INNER;
+      for(const r of rowsH){let ly=yy+11;ctx.font=F(10,true);
+        r.nameL.forEach(l=>{text(l,PAD+INNER,ly,10,true,'#000');ly+=14});
+        r.subL.forEach(l=>{text(l,PAD+INNER,ly-1,8.5,false,GRAY);ly+=12});
+        text(money2(r.it.line_total),W-PAD-INNER,yy+11,10,false,'#000','right');yy+=r.hh}
+      ctx.strokeStyle='#ddd';ctx.lineWidth=.6;ctx.beginPath();ctx.moveTo(PAD+INNER,yy+1);ctx.lineTo(W-PAD-INNER,yy+1);ctx.stroke();yy+=9;
+      for(const [l,v,b] of extra){text(l,PAD+INNER,yy+(b?12:10),b?11:9.5,b,b?WINE:GRAY);text(v,W-PAD-INNER,yy+(b?12:10),b?13:9.5,b,b?WINE:'#000','right');yy+=b?19:15}}
+    y+=h1+GAP;
+    // shipping box
+    const sh=[ '🚚 วิธีจัดส่งงาน : '+shipText,'🗓️ ส่งงาน : '+delivery ];
+    ctx.font=F(10,false);const shL=sh.flatMap(t=>thaiLines(ctx,t,innerW));
+    const h2=INNER*2+shL.length*14-2;card(h2);
+    if(draw)shL.forEach((l,i)=>text(l,PAD+INNER,y+INNER+11+i*14,10,false,'#000'));
+    y+=h2+GAP;
+    // payment box
+    if(due>0&&qr){
+      const qrSize=150,left=innerW-qrSize-12;
+      ctx.font=F(16,false);const accL=thaiLines(ctx,account,left);ctx.font=F(13,false);const nm=shop.promptpay_name||'';
+      const leftH=accL.length*21+(nm?24:0)+16;const h3=INNER*2+Math.max(qrSize+30,leftH);card(h3);
+      if(draw){let ly=y+INNER+16;accL.forEach(l=>{text(l,PAD+INNER,ly,16,false,'#000');ly+=21});
+        if(nm){ly+=2;text(nm,PAD+INNER,ly+6,13,false,GRAY);ly+=20}text('รับเงินได้จากทุกธนาคาร',PAD+INNER,ly+8,11.5,false,GRAY);
+        const qx=W-PAD-INNER-qrSize,qy=y+INNER+16,n=qr.length,cell=qrSize/(n+0);
+        text('สแกนจ่าย',qx+qrSize/2,y+INNER+9,9,true,WINE,'center');
+        ctx.fillStyle='#fff';ctx.fillRect(qx,qy,qrSize,qrSize);ctx.fillStyle='#000';
+        const mod=qrSize/(n+8);for(let r=0;r<n;r++)for(let c=0;c<n;c++)if(qr[r][c])ctx.fillRect(qx+(c+4)*mod,qy+(r+4)*mod,mod+.4,mod+.4);
+        text(money2(due)+' บาท',qx+qrSize/2,qy+qrSize+16,14,true,'#000','center')}
+      y+=h3+GAP;
+    }else if(due<=0){
+      const h3=INNER*2-2;card(h3+8);if(draw)text('✓ ชำระครบแล้ว ขอบคุณค่ะ',W/2,y+INNER+8,11,true,'#2e7d32','center');y+=h3+8+GAP;
+    }
+    if(due>0){
+      if(afterText){ctx.font=F(9.5,false);const l=thaiLines(ctx,afterText,innerW);const h4=INNER*2+l.length*13;card(h4);
+        if(draw)l.forEach((t,i)=>text(t,PAD+INNER,y+INNER+10+i*13,9.5,false,'#000'));y+=h4+GAP}
+      else if(!payment){ctx.font=F(8.5,false);const l=thaiLines(ctx,'หลังโอนแล้ว รบกวนส่งสลิปพร้อมชื่อผู้รับ เบอร์โทรศัพท์ และที่อยู่จัดส่งค่ะ',innerW);
+        if(draw)l.forEach((t,i)=>text(t,W/2,y+10+i*12,8.5,false,GRAY,'center'));y+=l.length*12+GAP}
+    }
+    return y-GAP+PAD;
+  }
+  cv.width=Math.round(W*SCALE);cv.height=10;ctx.setTransform(SCALE,0,0,SCALE,0,0);
+  const H=Math.ceil(layout(false));
+  cv.width=Math.round(W*SCALE);cv.height=Math.round(H*SCALE);ctx.setTransform(SCALE,0,0,SCALE,0,0);
+  ctx.fillStyle=CREAM;ctx.fillRect(0,0,W,H);layout(true);
+  for(const q of [0.9,0.82,0.74]){const b=await new Promise(r=>cv.toBlob(r,'image/jpeg',q));if(b&&b.size<=800000)return b}
+  throw new Error('รูปใหญ่เกินไป');
+}
+
 // ---- orders linked to this chat (read only; editing stays in the Mac app)
 const baht=n=>Number(n||0).toLocaleString('th-TH',{minimumFractionDigits:0,maximumFractionDigits:2})+' บาท';
 const STATUS={inquiry:'รอคอนเฟิร์ม',confirmed:'คอนเฟิร์มแล้ว',designing:'กำลังออกแบบ',design_approved:'อนุมัติแบบแล้ว',in_production:'กำลังผลิต',ready_to_ship:'พร้อมส่ง',shipped:'ส่งออกแล้ว',done:'จัดส่งเรียบร้อย',cancelled:'ยกเลิก'};
@@ -411,7 +543,8 @@ function orderCard(o){
     o.discount_amount?row('ส่วนลด','-'+baht(o.discount_amount)):null,
     o.rush_fee?row('ค่างานด่วน',baht(o.rush_fee)):null,
     o.shipping_fee?row('ค่าส่ง',baht(o.shipping_fee)):null,
-    row('รวม',baht(o.total)));
+    row('รวม',baht(o.total)),
+    h('button',{type:'button',class:'sumbtn',onclick:ev=>makeSummary(o,ev.target)},'สรุปรายการเป็นรูป + QR'));
 }
 async function openOrders(){
   const id=S.open;
