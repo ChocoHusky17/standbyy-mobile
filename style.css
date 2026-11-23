@@ -366,3 +366,4 @@ body.brandfont .ono,body.brandfont .oamt{font-family:FCMinimalBold,system-ui,san
 .logintext p{margin:0;font-size:14px;color:var(--muted)}
 /* login logo without the white cut-out edge */
 .loginhead .loginlogo,.loginlogo{background:transparent!important;padding:0!important;box-shadow:none!important;border-radius:0!important}
+.msg.out.swiping::before{content:'↩';position:absolute;left:-30px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:18px;opacity:.5}.msg.out.armed::before{color:var(--accent);opacity:1}.msg.out{position:relative}

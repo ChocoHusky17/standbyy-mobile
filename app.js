@@ -528,7 +528,7 @@ function bubble(m){
   else if((m.kind==='file')&&m.media_id)main=h('button',{type:'button',class:'bubble filebtn',onclick:ev=>downloadFile(m,ev.currentTarget)},'📎 '+(m.file_name||'ไฟล์')+' · แตะเพื่อเปิด');
   else main=h('div',{class:'bubble'+(media&&!m.body?' media':'')},m.body||label||'');
   const who=m.direction==='outbound'?(m.bot?h('span',{class:'bot'},'บอท'):(m.sender?h('span',{class:'who'},m.sender):'')):'';
-  const canQuote=m.direction==='inbound'&&m.quotable===true&&/^line:/.test(S.open||'');
+  const canQuote=m.quotable===true&&/^line:/.test(S.open||'');
   const el=h('div',{class:'msg '+(m.direction==='outbound'?'out':'in')+(m.bot?' bot':''),'data-mid':m.id},
     kids.length?h('div',{class:'bubble'},kids,main.className==='bubble'?main.textContent:main):main,
     h('div',{class:'meta'},who,h('span',null,hm(ts(m.created)||Date.now()))));;
