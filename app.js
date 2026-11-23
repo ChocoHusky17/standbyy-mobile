@@ -323,11 +323,19 @@ function buildChat(){
   const msgs=h('div',{class:'msgs'});
   const note=h('div',{class:'note',style:'display:none'});
   const file=h('input',{type:'file',accept:'image/*',style:'display:none',onchange:()=>{const f=file.files[0];file.value='';if(f)askSendImage(f)}});
-  const attach=h('button',{type:'button',class:'attach','aria-label':'ส่งรูป',onclick:()=>{if(!sendBlock()&&!S.sending)file.click()}},'📷');
-  const quick=h('button',{type:'button',class:'attach','aria-label':'ข้อความด่วน',onclick:()=>{if(!sendBlock())openQuick()}},'⚡');
-  const ai=h('button',{type:'button',class:'attach','aria-label':'ร่างคำตอบด้วย AI',onclick:()=>{if(!sendBlock())askAI()}},'✨');
-  const gal=h('button',{type:'button',class:'attach','aria-label':'คลังผลงาน',onclick:()=>{if(!sendBlock())openPortfolio(true)}},'🖼️');
-  const comp=h('div',{class:'composer'},attach,gal,quick,ai,file,ta,send);
+  const plus=h('button',{type:'button',class:'attach plus','aria-label':'เพิ่ม',onclick:()=>{
+    if(sendBlock()){toast(sendBlock());return}
+    const overlay=h('div',{class:'overlay',onclick:ev=>{if(ev.target===overlay)overlay.remove()}});
+    const item=(icon,text,fn)=>h('button',{type:'button',class:'menuitem',onclick:()=>{overlay.remove();fn()}},icon+'  '+text);
+    overlay.append(h('div',{class:'sheet'},
+      item('📷','ส่งรูปจากเครื่อง',()=>{if(!S.sending)file.click()}),
+      item('🖼️','คลังผลงานและตารางราคา',()=>openPortfolio(true)),
+      item('⚡','ข้อความด่วน',openQuick),
+      item('✨','ร่างคำตอบด้วย AI',askAI),
+      h('div',{class:'actions'},h('button',{type:'button',onclick:()=>overlay.remove()},'ยกเลิก'))));
+    document.body.append(overlay);
+  }},'＋');
+  const comp=h('div',{class:'composer'},plus,file,ta,send);
   ta.value=loadDraft(S.open);
   ta.addEventListener('input',()=>saveDraft(S.open,ta.value));
   S.chat.els={ta,send,msgs,note,comp,replybar:null,title:h('h1',null,c.customer||'แชท')};
