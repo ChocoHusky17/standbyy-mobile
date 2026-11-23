@@ -181,7 +181,7 @@ function renderList(){
     const list=h('div',{class:'list'});
     const net=h('div',{class:'note err',id:'neterr',style:'display:none'});
     root.replaceChildren(
-      h('div',{class:'bar'},h('h1',null,S.section==='mine'?'ข้อความของฉัน':'กล่องข้อความ',h('small',{id:'whoami'},(s.name||s.id)+' · v18')),h('button',{type:'button',id:'shiftbtn',onclick:toggleShift},'เวร'),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
+      h('div',{class:'bar'},h('h1',null,S.section==='mine'?'ข้อความของฉัน':'กล่องข้อความ',h('small',{id:'whoami'},(s.name||s.id)+' · v19')),h('button',{type:'button',id:'shiftbtn',onclick:toggleShift},'เวร'),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
       tabs,h('div',{class:'search'},search,wait),net,list);
     listEls={list,tabs,net};
   }
@@ -646,7 +646,6 @@ function openChatMenu(){
       if(!others.length)items.push(h('div',{class:'empty small'},'ไม่มีแอดมินคนอื่นที่เข้าเวรอยู่'));
       others.forEach(a=>items.push(btn(a.name,()=>run(()=>api('/v1/handoff',{id,owner:a.id}),'ส่งต่อให้ '+a.name+' แล้ว'))));
     }
-    items.push(btn('📝 ข้อมูลเคสและสถานะแชท',()=>{overlay.remove();openDetails()}));
     items.push(btn(c.action_required?'⚑ ยกเลิกธง "ต้องดำเนินการ"':'⚑ ติดธง "ต้องดำเนินการ"',()=>run(()=>api('/v1/action-required',{id,required:!c.action_required,version:c.action_version||1}))));
     if(Array.isArray(S.state.pinnedConversationIDs))items.push(btn(isPinned(c)?'📌 เลิกปักหมุด':'📌 ปักหมุดแชทนี้',()=>run(()=>rpc('inbox_set_chat_pin',{p_id:id,p_pinned:!isPinned(c)}))));
     if(c.line_chat_url&&/^https:\/\/chat\.line\.biz\//.test(c.line_chat_url))items.push(h('a',{class:'menuitem',href:c.line_chat_url,target:'_blank',rel:'noopener noreferrer'},'เปิดแชทใน LINE Official Account'));
@@ -708,39 +707,6 @@ async function askAI(){
   }catch(e){toast(e.message||'สร้างร่างไม่สำเร็จ')}
   finally{S.aiBusy=false}
 }
-// ---- case details and chat status
-const CHAT_STATUS=[['waiting','รอแอดมิน'],['waiting_customer','รอลูกค้า'],['closed','จบการสนทนา']];
-function openDetails(){
-  const id=S.open,c=conv(id);if(!c)return;
-  const d=c.details||{};
-  const f=(label,key,type)=>{const el=type==='area'?h('textarea',{rows:3}):h('input',{type:type==='num'?'number':'text',inputmode:type==='num'?'numeric':null});
-    el.value=d[key]==null?'':String(d[key]);return {label,key,el,type}};
-  const fields=[f('สินค้า','product'),f('ขนาด','size'),f('จำนวน','quantity','num'),f('วันที่ใช้งาน','eventDate'),f('การจัดส่ง','delivery'),f('บันทึก','notes','area')];
-  const sel=h('select',null,CHAT_STATUS.map(([v,t])=>h('option',{value:v,selected:c.status===v},t)));
-  const blocked=c.owner&&c.owner!==S.session.id?'แชทนี้เป็นของ '+adminName(c.owner)+' แก้ไขไม่ได้':'';
-  const save=h('button',{type:'button',class:'go',disabled:!!blocked},'บันทึก'),close=h('button',{type:'button'},'ปิด');
-  const stage=d.orderStage?h('div',{class:'kv'},h('span',null,'ขั้นของงาน'),h('b',null,d.orderStage)):null;
-  const overlay=h('div',{class:'overlay'},h('div',{class:'sheet tall'},h('h2',null,'ข้อมูลเคส · '+(c.customer||'')),blocked?h('div',{class:'note'},blocked):null,stage,
-    ...fields.map(x=>h('label',{class:'fld'},h('span',null,x.label),x.el)),h('label',{class:'fld'},h('span',null,'สถานะแชท'),sel),h('div',{class:'actions'},close,save)));
-  close.onclick=()=>overlay.remove();
-  save.onclick=async()=>{
-    save.disabled=close.disabled=true;
-    try{
-      const details={};
-      for(const x of fields){const v=x.el.value.trim();if(x.type==='num'){if(v!==''){const n=Number(v);if(!Number.isInteger(n)||n<1||n>999)throw new Error('จำนวนต้องเป็นเลข 1-999');details[x.key]=n}}else details[x.key]=v}
-      let cur=conv(id);
-      if(!(onDuty()&&cur.owner===S.session.id)){
-        if(cur.owner&&cur.owner!==S.session.id)throw new Error('แชทนี้เป็นของ '+adminName(cur.owner));
-        if(!confirm('ต้องเข้าเวรและรับแชทนี้ก่อนจึงแก้ข้อมูลได้ ทำเลยไหม?')){save.disabled=close.disabled=false;return}
-        await api('/v1/prepare-reply',{id,version:cur.version});await poll(true);cur=conv(id);
-      }
-      await api('/v1/details',{id,version:cur.version,status:sel.value,details});
-      overlay.remove();toast('บันทึกแล้ว');await poll(true);
-    }catch(e){toast(e.message);save.disabled=close.disabled=false}
-  };
-  document.body.append(overlay);
-}
-
 // ---- สินค้าและราคา (read only; the prices live in the shop database)
 async function openCatalog(){
   S.ph='catalog';
