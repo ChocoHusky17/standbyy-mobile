@@ -386,7 +386,7 @@ function buildChat(){
   const send=h('button',{type:'button',class:'send','aria-label':'ส่ง',onclick:()=>askSend()},icon('send'));
   const msgs=h('div',{class:'msgs'});
   const note=h('div',{class:'note',style:'display:none'});
-  const file=h('input',{type:'file',accept:'image/*',style:'display:none',onchange:()=>{const f=file.files[0];file.value='';if(f)askSendImage(f)}});
+  const file=h('input',{type:'file',accept:'image/*',multiple:true,style:'display:none',onchange:()=>{const fs=[...file.files];file.value='';if(fs.length)askSendImages(fs)}});
   const plus=h('button',{type:'button',class:'attach plus','aria-label':'เพิ่ม',onclick:()=>{
     if(sendBlock()){toast(sendBlock());return}
     const overlay=h('div',{class:'overlay',onclick:ev=>{if(ev.target===overlay)overlay.remove()}});
@@ -690,6 +690,63 @@ async function askSendImage(file,ready,after){
     finally{S.sending=false;refreshSend()}
   };
   document.body.append(overlay);
+}
+
+// Several pictures from the phone: one confirmation, then sent one by one in order.
+// Each picture keeps its request id, so "send the rest" never sends one twice.
+const MAX_PICS=10;
+async function askSendImages(files){
+  if(files.length===1)return askSendImage(files[0]);
+  const c=conv(S.open);if(!c||S.sending)return;
+  if(sendBlock()){toast(sendBlock());return}
+  const extra=files.length>MAX_PICS?files.length-MAX_PICS:0;files=files.slice(0,MAX_PICS);
+  const id=S.open,pics=[];
+  for(const f of files){try{const blob=await shrink(f);pics.push({blob,url:URL.createObjectURL(blob),requestID:uuid(),sent:false})}catch(e){}}
+  if(!pics.length){noteChat('เปิดรูปที่เลือกไม่ได้ ลองรูปแบบ JPEG หรือ PNG');return}
+  const skipped=files.length-pics.length;
+  const go=h('button',{type:'button',class:'go'}),cancel=h('button',{type:'button'},'ยกเลิก');
+  const status=h('div',{class:'meta'});
+  const strip=h('div',{class:'pstrip'});
+  const title=h('h2');
+  const draw=()=>{
+    const left=pics.filter(p=>!p.sent);
+    title.textContent='ส่งรูป '+pics.length+' รูปถึง '+(c.customer||'ลูกค้า')+' ทาง LINE?';
+    go.textContent=left.length<pics.length?'ส่งที่เหลือ '+left.length+' รูป':'ส่ง '+pics.length+' รูป';
+    strip.replaceChildren(...pics.map((p,k)=>h('div',{class:'pcell'+(p.sent?' sent':'')},h('img',{src:p.url,alt:'รูปที่ '+(k+1)}),
+      p.sent?h('span',{class:'pdone','aria-label':'ส่งแล้ว'},'✓'):
+      pics.length>1&&!S.sending&&!pics.some(q=>q.sent)?h('button',{type:'button',class:'prm','aria-label':'เอารูปที่ '+(k+1)+' ออก',onclick:()=>{URL.revokeObjectURL(p.url);pics.splice(k,1);draw()}},'×'):null)));
+  };
+  status.textContent='ส่งเป็นรูปแยกกัน '+pics.length+' ข้อความ (นับโควต้า LINE '+pics.length+' ข้อความ)'+
+    (extra?' · ส่งได้ครั้งละไม่เกิน '+MAX_PICS+' รูป ไม่ได้ใส่อีก '+extra+' รูป':'')+(skipped?' · เปิดไม่ได้ '+skipped+' รูป':'');
+  const close=()=>{pics.forEach(p=>URL.revokeObjectURL(p.url));overlay.remove()};
+  const overlay=h('div',{class:'overlay'},h('div',{class:'sheet'},title,strip,status,h('div',{class:'actions'},cancel,go)));
+  cancel.onclick=close;
+  go.onclick=async()=>{
+    go.disabled=cancel.disabled=true;S.sending=true;draw();
+    try{
+      for(const [k,p] of pics.entries()){
+        if(p.sent)continue;
+        status.textContent='กำลังส่ง '+(k+1)+' / '+pics.length+' …';
+        const cur=conv(id);if(!cur)throw new Error('ไม่พบแชทนี้แล้ว');
+        if(!p.mediaID){
+          const image=await blobB64(p.blob),up=v=>api('/v1/line-image',{id,version:v,image,mobile:true});
+          try{p.mediaID=(await up(cur.version)).mediaID}
+          catch(e){if(e.status!==409)throw e;await poll(true);const n=conv(id);if(!n)throw e;p.mediaID=(await up(n.version)).mediaID}
+        }
+        await doSend(id,null,p.requestID,p.mediaID);
+        p.sent=true;draw();
+        await poll(true);
+      }
+      close();toast('ส่งรูปแล้ว '+pics.length+' รูป');if(S.chat)fetchNew();
+    }catch(err){
+      if(err.status===429&&/โควต้า/.test(err.message||''))S.quotaFull=true;
+      const n=pics.filter(p=>p.sent).length;
+      status.textContent=(n?'ส่งไปแล้ว '+n+' รูป แล้วหยุด: ':'ส่งไม่สำเร็จ: ')+(err.message||'');
+      cancel.disabled=false;cancel.textContent='ปิด';go.disabled=!!sendBlock();draw();
+      if(n&&S.chat)fetchNew();
+    }finally{S.sending=false;refreshSend()}
+  };
+  draw();document.body.append(overlay);
 }
 
 // ---- summary picture with the PromptPay QR (same layout as the Mac app; fonts come from the server after sign-in)
@@ -1072,7 +1129,8 @@ async function sendPortfolioMany(items,library,fullSrc){
         else{const r=await fetch(pubUrl(item.file_url),{credentials:'omit',referrerPolicy:'no-referrer'});if(!r.ok)throw new Error('โหลดรูปที่ '+(k+1)+' ไม่ได้');blob=await r.blob()}
         const jpeg=await shrink(blob);
         const cur=conv(id);
-        const up=await api('/v1/line-image',{id,version:cur.version,image:await blobB64(jpeg),mobile:true});
+        const image=await blobB64(jpeg),upload=v=>api('/v1/line-image',{id,version:v,image,mobile:true});
+        let up;try{up=await upload(cur.version)}catch(e){if(e.status!==409)throw e;await poll(true);const n=conv(id);if(!n)throw e;up=await upload(n.version)}
         await doSend(id,null,uuid(),up.mediaID);
         done.push(item.id);
         await poll(true);

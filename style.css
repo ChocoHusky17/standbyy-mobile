@@ -367,3 +367,7 @@ body.brandfont .ono,body.brandfont .oamt{font-family:FCMinimalBold,system-ui,san
 /* login logo without the white cut-out edge */
 .loginhead .loginlogo,.loginlogo{background:transparent!important;padding:0!important;box-shadow:none!important;border-radius:0!important}
 .msg.out.swiping::before{content:'↩';position:absolute;left:-30px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:18px;opacity:.5}.msg.out.armed::before{color:var(--accent);opacity:1}.msg.out{position:relative}
+.pcell{position:relative;flex-shrink:0;width:64px;height:64px}
+.pcell img{display:block}.pcell.sent img{opacity:.55}
+.pcell .prm{position:absolute;top:2px;right:2px;width:26px;height:26px;border-radius:50%;border:2px solid var(--card,#fff);background:rgba(0,0,0,.65);color:#fff;font-size:16px;line-height:1;padding:0;display:grid;place-items:center}
+.pcell .pdone{position:absolute;right:4px;bottom:4px;width:20px;height:20px;border-radius:50%;background:#2e7d32;color:#fff;font-size:12px;display:grid;place-items:center}
