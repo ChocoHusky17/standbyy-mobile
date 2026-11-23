@@ -312,14 +312,13 @@ function fillList(){
   if(!S.state){list.replaceChildren(...skel(7));return}
   const items=visibleList();
   if(!items.length){list.replaceChildren(h('div',{class:'empty'},'ไม่มีแชท'));return}
-  const top=list.scrollTop;
-  list.replaceChildren(...items.map(c=>{
+  // Rows and avatars are reused while nothing in them changed: rebuilding them on every poll made profile pictures flicker.
+  const nodes=items.map(c=>{
     const m=c.messages&&c.messages[0];
-    const avatar=h('div',{class:'avatar'},(c.customer||'?').trim().charAt(0).toUpperCase());
-    if(typeof c.profile_picture==='string'&&/^https:\/\//.test(c.profile_picture)){
-      const im=h('img',{src:c.profile_picture,alt:'',loading:'lazy',referrerpolicy:'no-referrer'});im.onerror=()=>im.remove();avatar.append(im);
-    }
-    return h('button',{type:'button',class:'row',onclick:()=>openChat(c.id)},avatar,
+    const sig=[c.customer,isPinned(c),listTime(lastMs(c)),preview(m),c.status,c.action_required,c.owner,c.owner?adminName(c.owner):'',c.unread_count,c.profile_picture].join('|');
+    const hit=rowCache.get(c.id);
+    if(hit&&hit.sig===sig)return hit.el;
+    const el=h('button',{type:'button',class:'row',onclick:()=>openChat(c.id)},avatarFor(c),
       h('div',{class:'rowmain'},
         h('div',{class:'rowtop'},h('div',{class:'rowname'},(isPinned(c)?'📌 ':'')+(c.customer||'ลูกค้า')),h('div',{class:'rowtime'},listTime(lastMs(c)))),
         h('div',{class:'rowbottom'},h('div',{class:'rowpreview'},preview(m)),
@@ -327,8 +326,23 @@ function fillList(){
           c.action_required?h('span',{class:'chip wait'},'⚑'):null,
           c.owner?h('span',{class:'chip'},c.owner===S.session.id?'ฉัน':adminName(c.owner)):null,
           c.unread_count?h('span',{class:'badge'},c.unread_count>99?'99+':c.unread_count):null)));
-  }));
-  list.scrollTop=top;
+    rowCache.set(c.id,{sig,el});
+    return el;
+  });
+  const same=nodes.length===list.children.length&&nodes.every((n,k)=>list.children[k]===n);
+  if(!same){const top=list.scrollTop;list.replaceChildren(...nodes);list.scrollTop=top}
+}
+const rowCache=new Map(),avatarCache=new Map();
+function avatarFor(c){
+  const url=typeof c.profile_picture==='string'&&/^https:\/\//.test(c.profile_picture)?c.profile_picture:'';
+  const key=c.id+'|'+url+'|'+(c.customer||'');
+  let el=avatarCache.get(key);
+  if(!el){
+    el=h('div',{class:'avatar'},(c.customer||'?').trim().charAt(0).toUpperCase());
+    if(url){const im=h('img',{src:url,alt:'',decoding:'async',referrerpolicy:'no-referrer'});im.onerror=()=>im.remove();el.append(im)}
+    avatarCache.set(key,el);
+  }
+  return el;
 }
 
 // ---- chat view
