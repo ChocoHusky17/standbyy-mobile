@@ -123,3 +123,25 @@ button{font:inherit;color:inherit}
 .ocard .chk input{width:18px}
 input[type=date]{-webkit-appearance:none;appearance:none;display:block;width:100%;max-width:100%;min-width:0;min-height:44px;box-sizing:border-box;text-align:left}
 input[type=date]::-webkit-date-and-time-value{text-align:left}
+
+/* touch sizes and readable text */
+.bar button{min-height:44px;min-width:44px;font-size:16px}
+.bar small{font-size:13px}
+.tabs button{min-height:40px;font-size:15px;padding:8px 12px}
+.waitbtn,.fchip{min-height:40px}
+.chip{font-size:12px;padding:2px 8px}
+.rowtime{font-size:13px}.meta{font-size:12px}.day{font-size:13px;padding:3px 12px}
+.badge{font-size:13px}.tabs .badge{font-size:12px}
+.row{min-height:64px}
+.send,.attach{width:44px;height:44px}.attach{font-size:22px}
+.viewclose{width:44px;height:44px}
+.replybtn{font-size:13px;padding:8px 6px;min-height:36px}
+.sumbtn{min-height:46px}.sheet .actions button{min-height:46px}.menuitem{min-height:48px}
+.filebtn{min-height:44px}
+.pcell{min-height:44px}
+/* banners */
+.sysbanner{position:fixed;left:12px;right:12px;z-index:90;border:0;border-radius:12px;padding:12px 14px;font-size:15px;font-weight:600;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.25)}
+.sysbanner.upd{bottom:calc(14px + var(--bottom));background:var(--brand);color:var(--cream)}
+.sysbanner.net{top:calc(8px + var(--top));background:var(--ink);color:var(--cream)}
+.list.pulling::before{content:'ปล่อยเพื่อรีเฟรช';display:block;text-align:center;color:var(--muted);font-size:13px;padding:8px}
+.newdiv{background:var(--brand);color:var(--cream);align-self:stretch;text-align:center;border-radius:6px;margin:10px 0}
