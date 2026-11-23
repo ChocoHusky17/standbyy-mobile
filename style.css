@@ -171,3 +171,14 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .pgrid.nocap{column-gap:2px;padding:2px}.pgrid.nocap .pcell{margin-bottom:2px}.pgrid.nocap .pcell img{border-radius:2px}
 .pgrid.bigcap .pcell img{max-height:none}
 .pgrid .empty{column-span:all}
+
+/* grid in reading order; every picture is shown whole (its own proportions) inside an equal square */
+.pgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));column-count:auto;column-gap:8px;row-gap:10px;padding:10px;overflow-y:auto;-webkit-overflow-scrolling:touch;flex:1 1 0;min-height:0;align-content:start;touch-action:pan-y}
+.pgrid .pcell{display:flex;flex-direction:column;gap:3px;width:auto;margin:0;break-inside:auto;min-width:0}
+.pgrid .pbox{position:relative;width:100%;padding-bottom:100%;background:var(--tint);border-radius:10px;overflow:hidden}
+.pgrid .pbox img{position:absolute;inset:0;width:100%;height:100%;min-height:0;object-fit:contain;border-radius:0;background:transparent}
+.pgrid .pcell span{margin-top:0}
+.pgrid .pghint{grid-column:1/-1;column-span:none;margin:0}
+.pgrid .empty{grid-column:1/-1;column-span:none}
+.pgrid.nocap{gap:2px;padding:2px}.pgrid.nocap .pbox{border-radius:2px}.pgrid.nocap .pcell{gap:0}
+.filelayer .pgrid{flex:1 1 0;min-height:0}
