@@ -86,3 +86,6 @@ button{font:inherit;color:inherit}
 .mention{border:0;background:transparent;color:var(--brand);font:inherit;font-weight:700;padding:0;text-decoration:underline}
 .attach{width:42px;height:42px;border:0;background:transparent;font-size:22px;flex-shrink:0}
 .sumbtn{margin-top:6px;border:1px solid var(--brand);background:var(--tint);color:var(--brand);border-radius:10px;padding:9px;font-weight:600}.sumbtn:disabled{opacity:.6}
+.menuitem{display:block;width:100%;text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:12px 14px;font-weight:600;text-decoration:none;color:var(--ink);font-size:16px}
+.menuitem:active{background:var(--tint)}.sheet .sub{color:var(--muted);font-size:13px;margin-top:4px}.empty.small{padding:6px 0;text-align:left}
+.sheet.tall{overflow-y:auto}

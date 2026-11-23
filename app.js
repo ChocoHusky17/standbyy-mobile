@@ -31,7 +31,10 @@ function listTime(ms){if(ms==null)return '';return dayKey(ms)===dayKey(Date.now(
 // ---- session / network
 function loadSession(){try{const s=JSON.parse(store(true)||'null');return s&&s.token&&s.publicKey?s:null}catch(e){return null}}
 function saveSession(s){S.session=s;store(false,s?JSON.stringify(s):null)}
-class ApiError extends Error{constructor(status,message){super(message);this.status=status}}
+const TH_ERR={'Start your shift first':'ต้องเข้าเวรก่อน','Hand off waiting conversations before ending shift':'ส่งต่อแชทที่รอตอบก่อนออกเวร',
+ 'Choose an active on-duty admin or return to queue':'เลือกแอดมินที่เข้าเวรอยู่ หรือคืนเข้าคิวกลาง','Only assigned admin or owner can hand off this chat':'เฉพาะเจ้าของแชทหรือ owner เท่านั้นที่ส่งต่อได้',
+ 'Conversation unavailable or already assigned':'แชทนี้มีผู้ดูแลแล้ว','Action status changed; reload before saving':'สถานะเปลี่ยนจากเครื่องอื่น ลองอีกครั้ง'};
+class ApiError extends Error{constructor(status,message){super(TH_ERR[message]||message);this.status=status}}
 async function post(url,body,headers){
   let r;
   try{r=await fetch(url,{method:'POST',headers:Object.assign({'Content-Type':'application/json'},headers||{}),body:JSON.stringify(body),cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer'})}
@@ -121,8 +124,11 @@ function visibleList(){
     if(c.status==='closed'&&S.filter!=='all')return false;
     if(q&&!((c.customer||'').toLowerCase().includes(q)||((c.messages&&c.messages[0]&&c.messages[0].body)||'').toLowerCase().includes(q)))return false;
     return true;
-  }).sort((a,b)=>(lastMs(b)||0)-(lastMs(a)||0));
+  }).sort((a,b)=>(isPinned(b)-isPinned(a))||((lastMs(b)||0)-(lastMs(a)||0)));
 }
+function isPinned(c){return S.state&&Array.isArray(S.state.pinnedConversationIDs)&&S.state.pinnedConversationIDs.includes(c.id)?1:0}
+function meAdmin(){return S.state&&S.state.admins&&S.state.admins.find(a=>a.id===S.session.id)}
+const onDuty=()=>{const m=meAdmin();return !!(m&&m.on_duty)};
 let listEls=null;
 function renderList(){
   const s=S.session;if(!s)return;
@@ -132,7 +138,7 @@ function renderList(){
     const list=h('div',{class:'list'});
     const net=h('div',{class:'note err',id:'neterr',style:'display:none'});
     root.replaceChildren(
-      h('div',{class:'bar'},h('h1',null,'แชทลูกค้า',h('small',null,(s.name||s.id)+' · v8')),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
+      h('div',{class:'bar'},h('h1',null,'แชทลูกค้า',h('small',{id:'whoami'},(s.name||s.id)+' · v9')),h('button',{type:'button',id:'shiftbtn',onclick:toggleShift},'เวร'),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
       tabs,h('div',{class:'search'},search),net,list);
     listEls={list,tabs,net};
   }
@@ -141,6 +147,7 @@ function renderList(){
 }
 function fillList(){
   const {list}=listEls;
+  const sb=document.getElementById('shiftbtn');if(sb)sb.textContent=onDuty()?'🟢 เข้าเวร':'⚪ ออกเวร';
   if(!S.state){list.replaceChildren(h('div',{class:'empty'},'กำลังโหลด…'));return}
   const items=visibleList();
   if(!items.length){list.replaceChildren(h('div',{class:'empty'},'ไม่มีแชท'));return}
@@ -150,9 +157,10 @@ function fillList(){
     const avatar=h('div',{class:'avatar'},(c.customer||'?').trim().charAt(0).toUpperCase());
     return h('button',{type:'button',class:'row',onclick:()=>openChat(c.id)},avatar,
       h('div',{class:'rowmain'},
-        h('div',{class:'rowtop'},h('div',{class:'rowname'},c.customer||'ลูกค้า'),h('div',{class:'rowtime'},listTime(lastMs(c)))),
+        h('div',{class:'rowtop'},h('div',{class:'rowname'},(isPinned(c)?'📌 ':'')+(c.customer||'ลูกค้า')),h('div',{class:'rowtime'},listTime(lastMs(c)))),
         h('div',{class:'rowbottom'},h('div',{class:'rowpreview'},preview(m)),
           c.status==='waiting'?h('span',{class:'chip wait'},'รอตอบ'):null,
+          c.action_required?h('span',{class:'chip wait'},'⚑'):null,
           c.owner?h('span',{class:'chip'},c.owner===S.session.id?'ฉัน':adminName(c.owner)):null,
           c.unread_count?h('span',{class:'badge'},c.unread_count>99?'99+':c.unread_count):null)));
   }));
@@ -181,7 +189,7 @@ function buildChat(){
   const attach=h('button',{type:'button',class:'attach','aria-label':'ส่งรูป',onclick:()=>{if(!sendBlock()&&!S.sending)file.click()}},'📷');
   const comp=h('div',{class:'composer'},attach,file,ta,send);
   S.chat.els={ta,send,msgs,note,comp,title:h('h1',null,c.customer||'แชท')};
-  root.replaceChildren(h('div',{class:'bar'},h('button',{type:'button',class:'back','aria-label':'กลับ',onclick:closeChat},'‹'),S.chat.els.title,h('button',{type:'button',onclick:openOrders},'ออเดอร์')),note,msgs,comp);
+  root.replaceChildren(h('div',{class:'bar'},h('button',{type:'button',class:'back','aria-label':'กลับ',onclick:closeChat},'‹'),S.chat.els.title,h('button',{type:'button',onclick:openOrders},'ออเดอร์'),h('button',{type:'button','aria-label':'เมนูแชท',onclick:openChatMenu},'⋯')),note,msgs,comp);
   refreshSend();
 }
 function sendBlock(){
@@ -533,6 +541,43 @@ async function drawSummary(res,doc,tpl,linked){
   ctx.fillStyle=CREAM;ctx.fillRect(0,0,W,H);layout(true);
   for(const q of [0.9,0.82,0.74]){const b=await new Promise(r=>cv.toBlob(r,'image/jpeg',q));if(b&&b.size<=800000)return b}
   throw new Error('รูปใหญ่เกินไป');
+}
+
+// ---- chat controls: shift, claim, release, hand off, action flag, pin (same rules as the Mac app)
+async function toggleShift(){
+  try{await api('/v1/shift',{onDuty:!onDuty()});await poll(true);toast(onDuty()?'เข้าเวรแล้ว':'ออกเวรแล้ว')}
+  catch(e){toast(e.message)}
+}
+function openChatMenu(){
+  const id=S.open;
+  const overlay=h('div',{class:'overlay',onclick:ev=>{if(ev.target===overlay)overlay.remove()}});
+  const sheet=h('div',{class:'sheet tall'});overlay.append(sheet);document.body.append(overlay);
+  const run=async(fn,done)=>{try{await fn();await poll(true);if(done)toast(done);draw()}catch(e){toast(e.message)}};
+  function draw(){
+    const c=conv(id);if(!c){overlay.remove();return}
+    const mine=c.owner===S.session.id,isOwnerRole=S.session.role==='owner';
+    const ownerName=c.owner?adminName(c.owner):'ว่าง (คิวกลาง)';
+    const btn=(t,fn,cls)=>h('button',{type:'button',class:'menuitem '+(cls||''),onclick:fn},t);
+    const items=[h('h2',null,c.customer||'แชท'),
+      h('div',{class:'kv'},h('span',null,'ผู้ดูแล'),h('b',null,ownerName)),
+      h('div',{class:'kv'},h('span',null,'เวรของคุณ'),h('b',null,onDuty()?'เข้าเวรอยู่':'ไม่ได้เข้าเวร'))];
+    if(!c.owner)items.push(btn('รับแชทนี้',()=>{
+      if(!onDuty()&&!confirm('ต้องเข้าเวรก่อนรับแชท เข้าเวรและรับแชทนี้เลยไหม?'))return;
+      run(async()=>{if(!onDuty())await api('/v1/shift',{onDuty:true});await api('/v1/claim',{id})},'รับแชทแล้ว')}));
+    if(c.owner&&(mine||isOwnerRole))items.push(btn('ปล่อยแชท (คืนเข้าคิวกลาง)',()=>run(()=>api('/v1/release',{id}),'ปล่อยแชทแล้ว')));
+    if(c.owner&&(mine||isOwnerRole)||(!c.owner&&false)){
+      const others=(S.state.admins||[]).filter(a=>a.active&&a.on_duty&&a.id!==S.session.id);
+      items.push(h('div',{class:'sub'},'ส่งต่อให้'));
+      if(!others.length)items.push(h('div',{class:'empty small'},'ไม่มีแอดมินคนอื่นที่เข้าเวรอยู่'));
+      others.forEach(a=>items.push(btn(a.name,()=>run(()=>api('/v1/handoff',{id,owner:a.id}),'ส่งต่อให้ '+a.name+' แล้ว'))));
+    }
+    items.push(btn(c.action_required?'⚑ ยกเลิกธง "ต้องดำเนินการ"':'⚑ ติดธง "ต้องดำเนินการ"',()=>run(()=>api('/v1/action-required',{id,required:!c.action_required,version:c.action_version||1}))));
+    if(Array.isArray(S.state.pinnedConversationIDs))items.push(btn(isPinned(c)?'📌 เลิกปักหมุด':'📌 ปักหมุดแชทนี้',()=>run(()=>rpc('inbox_set_chat_pin',{p_id:id,p_pinned:!isPinned(c)}))));
+    if(c.line_chat_url&&/^https:\/\/chat\.line\.biz\//.test(c.line_chat_url))items.push(h('a',{class:'menuitem',href:c.line_chat_url,target:'_blank',rel:'noopener noreferrer'},'เปิดแชทใน LINE Official Account'));
+    items.push(h('div',{class:'actions'},h('button',{type:'button',onclick:()=>overlay.remove()},'ปิด')));
+    sheet.replaceChildren(...items);
+  }
+  draw();
 }
 
 // ---- orders linked to this chat (read only; editing stays in the Mac app)
