@@ -861,6 +861,21 @@ async function openPortfolio(pick){
   const st={type:'all',size:null,kind:null,tags:new Set(),tagOpen:false,lib:null};
   const grid=h('div',{class:'pgrid'},h('div',{class:'empty'},'กำลังโหลด…'));
   const chips=h('div',{class:'filters'});
+  // Pinch the grid like the Photos app: fewer, larger pictures when spreading, more and smaller when pinching in.
+  let cols=3;try{cols=Math.min(6,Math.max(1,Number(localStorage.getItem('standbyy.pcols'))||3))}catch(e){}
+  const applyCols=()=>{grid.style.gridTemplateColumns='repeat('+cols+',1fr)';grid.classList.toggle('nocap',cols>=5);grid.classList.toggle('bigcap',cols<=2);try{localStorage.setItem('standbyy.pcols',String(cols))}catch(e){}};
+  applyCols();
+  let d0=null;
+  const dist=t=>Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
+  grid.addEventListener('touchstart',e=>{d0=e.touches.length===2?dist(e.touches):null},{passive:true});
+  grid.addEventListener('touchmove',e=>{
+    if(e.touches.length!==2||d0==null)return;e.preventDefault();
+    const sc=dist(e.touches)/d0;
+    if(sc>1.3&&cols>1){cols--;applyCols();d0=dist(e.touches)}
+    else if(sc<0.75&&cols<6){cols++;applyCols();d0=dist(e.touches)}
+  },{passive:false});
+  grid.addEventListener('touchend',()=>{d0=null});
+  grid.addEventListener('wheel',e=>{if(!e.ctrlKey)return;e.preventDefault();if(e.deltaY<0&&cols>1)cols--;else if(e.deltaY>0&&cols<6)cols++;applyCols()},{passive:false});
   let overlay=null;
   if(pick){
     overlay=h('div',{class:'overlay viewer filelayer'},h('div',{class:'pickhead'},h('b',null,'เลือกรูปส่งเข้าแชท'),h('button',{type:'button',onclick:()=>overlay.remove()},'✕')),chips,grid);
@@ -887,14 +902,14 @@ async function openPortfolio(pick){
     if(st.tagOpen)rows.push(h('div',{class:'frow tagrow'},allTags.length?allTags.map(t=>chip(t,st.tags.has(t),()=>{st.tags.has(t)?st.tags.delete(t):st.tags.add(t);draw()})).concat(st.tags.size?[chip('ล้างแท็ก',false,()=>{st.tags.clear();draw()})]:[]):[h('span',{class:'flabel'},'ยังไม่มีแท็ก')]));
     chips.replaceChildren(...rows);
     const items=byType.filter(i=>(!st.size||i.product_size_id===st.size)&&(!st.kind||i.kind===st.kind)&&(!st.tags.size||(i.tags||[]).some(t=>st.tags.has(t))));
-    grid.replaceChildren(...(items.length?items.map(i=>{
+    grid.replaceChildren(...(items.length?[h('div',{class:'pghint'},'ใช้สองนิ้วถ่าง/บีบเพื่อขยาย-ย่อรูป · '+items.length+' รูป'),...items.map(i=>{
       const local=isLocalPath(i.file_url);
       const img=h('img',{alt:i.caption||i.type_name||'ผลงาน',loading:'lazy',referrerPolicy:'no-referrer'});
       let fullUrl=null;
       if(local)assetBlob(i.file_url).then(b=>{fullUrl=URL.createObjectURL(b);img.src=fullUrl}).catch(()=>{});
       else img.src=pubUrl(i.thumb_url||i.file_url);
       return h('button',{type:'button',class:'pcell',onclick:()=>pick?sendPortfolio(i,overlay):viewPic(local?fullUrl:(pubUrl(i.file_url)||img.src))},img,h('span',null,i.caption||[i.type_name,i.size_label].filter(Boolean).join(' ')));
-    }):[h('div',{class:'empty'},'ไม่มีรูปที่ตรงกับตัวกรอง')]));
+    })]:[h('div',{class:'empty'},'ไม่มีรูปที่ตรงกับตัวกรอง')]));
   };
   try{st.lib=await rpc('inbox_portfolio',{});if(!pick&&S.ph!=='portfolio')return;draw()}
   catch(e){grid.replaceChildren(h('div',{class:'empty'},e.message))}
