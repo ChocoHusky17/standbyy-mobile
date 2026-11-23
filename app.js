@@ -200,6 +200,7 @@ async function checkQuota(){
 }
 setInterval(()=>{if(!document.hidden&&S.session)checkQuota()},10*60*1000);
 function startApp(){
+  loadFonts().then(()=>document.body.classList.add('brandfont')).catch(()=>{});
   S.revision=0;S.state=null;S.open=null;renderList();poll(true);checkUpdate();checkQuota();
   clearInterval(S.pollTimer);S.pollTimer=setInterval(()=>{if(!document.hidden)poll()},4500);
 }
@@ -308,7 +309,7 @@ function fillList(){
   if(S.quotaFull&&!qn&&listEls.net){qn=h('div',{class:'note err',id:'quotanote'},'โควต้าข้อความ LINE เดือนนี้เต็มแล้ว ตอบลูกค้าใน LINE OA ',h('a',{class:'oalink',href:'https://chat.line.biz/',target:'_blank',rel:'noopener noreferrer'},'เปิด LINE OA Manager'));listEls.net.before(qn)}
   else if(!S.quotaFull&&qn)qn.remove();
   const sb=document.getElementById('shiftbtn');if(sb){sb.classList.toggle('on',onDuty());sb.querySelector('.st').textContent=onDuty()?'เข้าเวรอยู่':'ออกเวร'}
-  if(!S.state){list.replaceChildren(h('div',{class:'empty'},'กำลังโหลด…'));return}
+  if(!S.state){list.replaceChildren(...skel(7));return}
   const items=visibleList();
   if(!items.length){list.replaceChildren(h('div',{class:'empty'},'ไม่มีแชท'));return}
   const top=list.scrollTop;
@@ -379,6 +380,7 @@ function buildChat(){
   const comp=h('div',{class:'composer'},plus,file,ta,send);
   ta.value=loadDraft(S.open);
   ta.addEventListener('input',()=>saveDraft(S.open,ta.value));
+  if(S.chat.loading)msgs.replaceChildren(...skel(6,'msg'));
   S.chat.els={ta,send,msgs,note,comp,replybar:null,title:h('h1',null,c.customer||'แชท')};
   const down=h('button',{type:'button',class:'downbtn','aria-label':'เลื่อนลงข้อความล่าสุด',onclick:()=>{msgs.scrollTo({top:msgs.scrollHeight,behavior:'smooth'})}},'↓',h('span',{class:'dcount'}));
   S.chat.els.down=down;
@@ -506,9 +508,11 @@ function bubble(m){
   else main=h('div',{class:'bubble'+(media&&!m.body?' media':'')},m.body||label||'');
   const who=m.direction==='outbound'?(m.bot?h('span',{class:'bot'},'บอท · '):(m.sender?m.sender+' · ':'')):'';
   const canQuote=m.direction==='inbound'&&m.quotable===true&&/^line:/.test(S.open||'');
-  return h('div',{class:'msg '+(m.direction==='outbound'?'out':'in'),'data-mid':m.id},
+  const el=h('div',{class:'msg '+(m.direction==='outbound'?'out':'in'),'data-mid':m.id},
     kids.length?h('div',{class:'bubble'},kids,main.className==='bubble'?main.textContent:main):main,
-    h('div',{class:'meta'},who,hm(ts(m.created)||Date.now()),canQuote?h('button',{type:'button',class:'replybtn','aria-label':'ตอบข้อความนี้',onclick:()=>setReply(m)},' ↩ ตอบ'):null));
+    h('div',{class:'meta'},who,hm(ts(m.created)||Date.now())));;
+  attachMsgGestures(el,m,canQuote);
+  return el;
 }
 function drawMessages(toBottom){
   const ch=S.chat;if(!ch||!ch.els)return;
@@ -541,6 +545,31 @@ async function loadOlder(){
   }catch(e){toast(e.message)}
 }
 
+// Like LINE/iMessage: swipe a customer message to the right to reply, or press and hold for a small menu.
+function skel(n,kind){return Array.from({length:n},(_,i)=>kind==='msg'?h('div',{class:'skel sk-msg'+(i%2?' r':'')}):h('div',{class:'skel sk-row'},h('div',{class:'sk-av'}),h('div',{class:'sk-lines'},h('i'),h('i'))))}
+function attachMsgGestures(el,m,canQuote){
+  let x0=null,y0=null,dx=0,timer=null,moved=false;
+  const reset=()=>{el.style.transform='';el.classList.remove('swiping','armed');clearTimeout(timer)};
+  el.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;x0=e.touches[0].clientX;y0=e.touches[0].clientY;dx=0;moved=false;
+    timer=setTimeout(()=>{if(!moved){reset();msgMenu(m,canQuote)}},500)},{passive:true});
+  el.addEventListener('touchmove',e=>{if(x0==null)return;const mx=e.touches[0].clientX-x0,my=e.touches[0].clientY-y0;
+    if(Math.abs(mx)>8||Math.abs(my)>8){moved=true;clearTimeout(timer)}
+    if(!canQuote||Math.abs(my)>Math.abs(mx))return;dx=Math.max(0,Math.min(70,mx));el.classList.add('swiping');el.classList.toggle('armed',dx>50);el.style.transform='translateX('+dx+'px)'},{passive:true});
+  el.addEventListener('touchend',()=>{const go=canQuote&&dx>50;reset();x0=null;if(go){if(navigator.vibrate)try{navigator.vibrate(8)}catch(e){}setReply(m)}});
+  el.addEventListener('touchcancel',()=>{reset();x0=null});
+  el.addEventListener('contextmenu',e=>{e.preventDefault();msgMenu(m,canQuote)});
+}
+function msgMenu(m,canQuote){
+  const text=m.body&&(!m.kind||m.kind==='text')?m.body:'';
+  const overlay=h('div',{class:'overlay',onclick:ev=>{if(ev.target===overlay)overlay.remove()}});
+  const item=(t,fn)=>h('button',{type:'button',class:'menuitem',onclick:()=>{overlay.remove();fn()}},t);
+  const items=[];
+  if(canQuote)items.push(item('ตอบข้อความนี้',()=>setReply(m)));
+  if(text)items.push(item('คัดลอกข้อความ',()=>{try{navigator.clipboard.writeText(text).then(()=>toast('คัดลอกแล้ว'))}catch(e){toast('คัดลอกไม่ได้')}}));
+  if(!items.length)return;
+  overlay.append(h('div',{class:'sheet'},h('div',{class:'quote'},snippetOf(m)),...items,h('div',{class:'actions'},h('button',{type:'button',onclick:()=>overlay.remove()},'ยกเลิก'))));
+  document.body.append(overlay);
+}
 function snippetOf(m){return m.kind==='image'||m.kind==='line_image'?'📷 รูปภาพ':m.kind==='sticker'?'สติกเกอร์':(m.body||'').replace(/\s+/g,' ').slice(0,80)}
 function setReply(m){
   if(sendBlock()){toast(sendBlock());return}
@@ -1315,7 +1344,7 @@ function fillOrders(){
   const cnt=document.getElementById('ordcount');if(cnt)cnt.textContent=o.total?o.total+' รายการ':'';
   const nodes=o.rows.map(orderRow);
   if(o.error)nodes.unshift(h('div',{class:'note err'},o.error));
-  if(o.loading)nodes.push(h('div',{class:'empty'},'กำลังโหลด…'));
+  if(o.loading)nodes.push(...skel(o.rows.length?2:6));
   else if(!o.rows.length&&!o.error)nodes.push(h('div',{class:'empty'},'ไม่พบออเดอร์'));
   else if(o.rows.length<o.total)nodes.push(h('button',{type:'button',class:'older',style:'margin:12px auto;display:block',onclick:()=>{o.page++;loadOrders(false)}},'โหลดเพิ่ม'));
   o.listEl.replaceChildren(...nodes);
@@ -1333,7 +1362,7 @@ async function openChatOrders(){
   const chat=S.open;if(!chat)return;
   S.ord={fromChat:chat,view:'chatlist',rows:[],total:0,q:'',status:'all'};
   const o=S.ord;
-  const list=h('div',{class:'list'},h('div',{class:'empty'},'กำลังโหลด…'));
+  const list=h('div',{class:'list'},...skel(3));
   const backToChat=()=>{S.ord=null;if(S.chat){buildChat();drawMessages(true)}else openChat(chat)};
   o.backToChat=backToChat;
   nav.push(backToChat,null);
