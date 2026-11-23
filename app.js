@@ -908,7 +908,7 @@ async function openPortfolio(pick){
       let fullUrl=null;
       if(local)assetBlob(i.file_url).then(b=>{fullUrl=URL.createObjectURL(b);img.src=fullUrl}).catch(()=>{});
       else img.src=pubUrl(i.thumb_url||i.file_url);
-      return h('button',{type:'button',class:'pcell',onclick:()=>pick?sendPortfolio(i,overlay):viewPic(local?fullUrl:(pubUrl(i.file_url)||img.src))},h('div',{class:'pbox'},img),h('span',null,i.caption||[i.type_name,i.size_label].filter(Boolean).join(' ')));
+      return h('div',{class:'pcell',role:'button',tabindex:'0',onclick:()=>pick?sendPortfolio(i,overlay):viewPic(local?fullUrl:(pubUrl(i.file_url)||img.src))},h('div',{class:'pbox'},img),h('span',null,i.caption||[i.type_name,i.size_label].filter(Boolean).join(' ')));
     })]:[h('div',{class:'empty'},'ไม่มีรูปที่ตรงกับตัวกรอง')]));
   };
   try{st.lib=await rpc('inbox_portfolio',{});if(!pick&&S.ph!=='portfolio')return;draw()}
