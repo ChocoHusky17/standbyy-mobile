@@ -89,3 +89,7 @@ button{font:inherit;color:inherit}
 .menuitem{display:block;width:100%;text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:12px 14px;font-weight:600;text-decoration:none;color:var(--ink);font-size:16px}
 .menuitem:active{background:var(--tint)}.sheet .sub{color:var(--muted);font-size:13px;margin-top:4px}.empty.small{padding:6px 0;text-align:left}
 .sheet.tall{overflow-y:auto}
+.replybtn{border:0;background:transparent;color:var(--brand);font:inherit;font-size:11px;padding:0 2px}
+.replybar{display:flex;align-items:center;gap:8px;padding:6px 14px;background:var(--tint);border-top:1px solid var(--line);font-size:13px;color:var(--brand);flex-shrink:0}
+.replybar span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.replybar button{border:0;background:transparent;font-size:16px;color:var(--muted)}
+.qbody{font-weight:400;font-size:13px;color:var(--muted);white-space:pre-wrap;max-height:3.9em;overflow:hidden;margin-top:2px}

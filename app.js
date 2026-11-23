@@ -122,23 +122,33 @@ function visibleList(){
     if(S.filter==='mine'&&c.owner!==me)return false;
     if(S.filter==='waiting'&&c.status!=='waiting')return false;
     if(c.status==='closed'&&S.filter!=='all')return false;
-    if(q&&!((c.customer||'').toLowerCase().includes(q)||((c.messages&&c.messages[0]&&c.messages[0].body)||'').toLowerCase().includes(q)))return false;
+    if(q&&!((c.customer||'').toLowerCase().includes(q)||((c.messages&&c.messages[0]&&c.messages[0].body)||'').toLowerCase().includes(q)||(S.hits&&S.hits.q===q&&S.hits.ids.has(c.id))))return false;
     return true;
   }).sort((a,b)=>(isPinned(b)-isPinned(a))||((lastMs(b)||0)-(lastMs(a)||0)));
 }
 function isPinned(c){return S.state&&Array.isArray(S.state.pinnedConversationIDs)&&S.state.pinnedConversationIDs.includes(c.id)?1:0}
 function meAdmin(){return S.state&&S.state.admins&&S.state.admins.find(a=>a.id===S.session.id)}
 const onDuty=()=>{const m=meAdmin();return !!(m&&m.on_duty)};
+
+let searchTimer=null;
+function serverSearch(){
+  clearTimeout(searchTimer);const q=S.search.trim().toLowerCase();
+  if(q.length<2){S.hits=null;return}
+  searchTimer=setTimeout(async()=>{
+    try{const ids=await rpc('inbox_search_messages',{p_query:S.search.trim()});
+      if(S.search.trim().toLowerCase()===q){S.hits={q,ids:new Set(ids)};if(listEls&&!S.open&&!S.team)fillList()}}catch(e){}
+  },400);
+}
 let listEls=null;
 function renderList(){
   const s=S.session;if(!s)return;
   if(!listEls||!root.contains(listEls.list)){
-    const search=h('input',{type:'search',placeholder:'ค้นหาชื่อลูกค้า',value:S.search,oninput:e=>{S.search=e.target.value;fillList()}});
+    const search=h('input',{type:'search',placeholder:'ค้นหาชื่อลูกค้าหรือข้อความ',value:S.search,oninput:e=>{S.search=e.target.value;fillList();serverSearch()}});
     const tabs=h('div',{class:'tabs'},[['all','ทั้งหมด'],['mine','ของฉัน'],['waiting','รอตอบ']].map(([k,t])=>h('button',{type:'button','data-k':k,onclick:()=>{S.filter=k;renderList()}},t)).concat([h('button',{type:'button',id:'teamtab',onclick:openTeam},'ทีม',h('span',{class:'badge tb',style:S.teamUnread?'':'display:none'},String(S.teamUnread||'')))]));
     const list=h('div',{class:'list'});
     const net=h('div',{class:'note err',id:'neterr',style:'display:none'});
     root.replaceChildren(
-      h('div',{class:'bar'},h('h1',null,'แชทลูกค้า',h('small',{id:'whoami'},(s.name||s.id)+' · v9')),h('button',{type:'button',id:'shiftbtn',onclick:toggleShift},'เวร'),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
+      h('div',{class:'bar'},h('h1',null,'แชทลูกค้า',h('small',{id:'whoami'},(s.name||s.id)+' · v10')),h('button',{type:'button',id:'shiftbtn',onclick:toggleShift},'เวร'),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
       tabs,h('div',{class:'search'},search),net,list);
     listEls={list,tabs,net};
   }
@@ -187,8 +197,9 @@ function buildChat(){
   const note=h('div',{class:'note',style:'display:none'});
   const file=h('input',{type:'file',accept:'image/*',style:'display:none',onchange:()=>{const f=file.files[0];file.value='';if(f)askSendImage(f)}});
   const attach=h('button',{type:'button',class:'attach','aria-label':'ส่งรูป',onclick:()=>{if(!sendBlock()&&!S.sending)file.click()}},'📷');
-  const comp=h('div',{class:'composer'},attach,file,ta,send);
-  S.chat.els={ta,send,msgs,note,comp,title:h('h1',null,c.customer||'แชท')};
+  const quick=h('button',{type:'button',class:'attach','aria-label':'ข้อความด่วน',onclick:()=>{if(!sendBlock())openQuick()}},'⚡');
+  const comp=h('div',{class:'composer'},attach,quick,file,ta,send);
+  S.chat.els={ta,send,msgs,note,comp,replybar:null,title:h('h1',null,c.customer||'แชท')};
   root.replaceChildren(h('div',{class:'bar'},h('button',{type:'button',class:'back','aria-label':'กลับ',onclick:closeChat},'‹'),S.chat.els.title,h('button',{type:'button',onclick:openOrders},'ออเดอร์'),h('button',{type:'button','aria-label':'เมนูแชท',onclick:openChatMenu},'⋯')),note,msgs,comp);
   refreshSend();
 }
@@ -297,9 +308,10 @@ function bubble(m){
   else if(m.kind==='sticker')main=stickerNode(m);
   else main=h('div',{class:'bubble'+(media&&!m.body?' media':'')},m.body||label||'');
   const who=m.direction==='outbound'?(m.bot?h('span',{class:'bot'},'บอท · '):(m.sender?m.sender+' · ':'')):'';
+  const canQuote=m.direction==='inbound'&&m.quotable===true&&/^line:/.test(S.open||'');
   return h('div',{class:'msg '+(m.direction==='outbound'?'out':'in'),'data-mid':m.id},
     kids.length?h('div',{class:'bubble'},kids,main.className==='bubble'?main.textContent:main):main,
-    h('div',{class:'meta'},who,hm(ts(m.created)||Date.now())));
+    h('div',{class:'meta'},who,hm(ts(m.created)||Date.now()),canQuote?h('button',{type:'button',class:'replybtn','aria-label':'ตอบข้อความนี้',onclick:()=>setReply(m)},' ↩ ตอบ'):null));
 }
 function drawMessages(toBottom){
   const ch=S.chat;if(!ch||!ch.els)return;
@@ -328,21 +340,48 @@ async function loadOlder(){
   }catch(e){toast(e.message)}
 }
 
+function snippetOf(m){return m.kind==='image'||m.kind==='line_image'?'📷 รูปภาพ':m.kind==='sticker'?'สติกเกอร์':(m.body||'').replace(/\s+/g,' ').slice(0,80)}
+function setReply(m){
+  if(sendBlock()){toast(sendBlock());return}
+  S.chat.replyTo={id:m.id,snippet:snippetOf(m)};drawReplyBar();S.chat.els.ta.focus();
+}
+function drawReplyBar(){
+  const e=S.chat&&S.chat.els;if(!e)return;
+  const r=S.chat.replyTo;
+  if(e.replybar){e.replybar.remove();e.replybar=null}
+  if(!r)return;
+  e.replybar=h('div',{class:'replybar'},h('span',null,'↩ ตอบ: '+r.snippet),h('button',{type:'button','aria-label':'ยกเลิกการตอบ',onclick:()=>{S.chat.replyTo=null;drawReplyBar()}},'✕'));
+  e.comp.before(e.replybar);
+}
+// ---- quick texts (shop's and mine): tap one to put it in the message box
+async function openQuick(){
+  const body=h('div',{class:'ordersbody'},h('div',{class:'empty'},'กำลังโหลด…'));
+  const overlay=h('div',{class:'overlay',onclick:ev=>{if(ev.target===overlay)overlay.remove()}},h('div',{class:'sheet tall'},h('h2',null,'ข้อความด่วน'),body,h('div',{class:'actions'},h('button',{type:'button',onclick:()=>overlay.remove()},'ปิด'))));
+  document.body.append(overlay);
+  try{
+    const q=await rpc('inbox_quick_texts',{});
+    const pick=t=>{const ta=S.chat&&S.chat.els&&S.chat.els.ta;if(ta){ta.value=(ta.value?ta.value+'\n':'')+t.body;ta.dispatchEvent(new Event('input'));ta.focus()}overlay.remove()};
+    const group=(title,list)=>list&&list.length?[h('div',{class:'sub'},title),...list.map(t=>h('button',{type:'button',class:'menuitem',onclick:()=>pick(t)},h('div',null,t.label),h('div',{class:'qbody'},t.body)))]:[];
+    const nodes=[...group('ของฉัน',q.mine),...group('ของร้าน',q.shop)];
+    body.replaceChildren(...(nodes.length?nodes:[h('div',{class:'empty'},'ยังไม่มีข้อความด่วน (ตั้งค่าได้ในแอป Mac)')]));
+  }catch(e){body.replaceChildren(h('div',{class:'empty'},e.message))}
+}
+
 // ---- sending (always confirmed first)
 function askSend(){
   const e=S.chat.els,body=e.ta.value.trim(),c=conv(S.open);
   if(!body||sendBlock()||S.sending)return;
-  const requestID=uuid();
+  const requestID=uuid(),reply=S.chat.replyTo;
   const go=h('button',{type:'button',class:'go'},'ส่ง'),cancel=h('button',{type:'button'},'ยกเลิก');
   const overlay=h('div',{class:'overlay'},h('div',{class:'sheet'},
-    h('h2',null,'ส่งถึง '+(c.customer||'ลูกค้า')+' ทาง LINE?'),h('div',{class:'text'},body),h('div',{class:'actions'},cancel,go)));
+    h('h2',null,'ส่งถึง '+(c.customer||'ลูกค้า')+' ทาง LINE?'),reply?h('div',{class:'quote'},'↩ ตอบ: '+reply.snippet):null,h('div',{class:'text'},body),h('div',{class:'actions'},cancel,go)));
   cancel.onclick=()=>overlay.remove();
   go.onclick=async()=>{
     go.disabled=cancel.disabled=true;S.sending=true;
     try{
-      await doSend(S.open,body,requestID);
+      await doSend(S.open,body,requestID,null,reply&&reply.id);
       overlay.remove();
-      if(S.chat&&S.chat.els){S.chat.els.ta.value='';S.chat.els.ta.style.height='auto'}
+      if(S.chat&&S.chat.els){S.chat.els.ta.value='';S.chat.els.ta.style.height='auto';S.chat.replyTo=null;drawReplyBar()}
       toast('ส่งแล้ว');
       await poll(true);if(S.chat)fetchNew();
     }catch(err){
@@ -351,9 +390,9 @@ function askSend(){
   };
   document.body.append(overlay);
 }
-async function doSend(id,body,requestID,mediaID){
+async function doSend(id,body,requestID,mediaID,replyTo){
   const c=conv(id);
-  const attempt=v=>api('/v1/send-line',Object.assign({id,version:v,requestID,mobile:true},mediaID?{mediaID}:{body}));
+  const attempt=v=>api('/v1/send-line',Object.assign({id,version:v,requestID,mobile:true},mediaID?{mediaID}:Object.assign({body},replyTo?{replyTo}:{})));
   try{return await attempt(c.version)}
   catch(e){
     if(e.status!==409)throw e;
