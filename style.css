@@ -295,3 +295,15 @@ body.brandfont .moreitem b{font-size:20px}
 .pgrid .pcell{flex:0 0 auto;width:calc((100% - (var(--cols) - 1) * var(--gap)) / var(--cols))!important;min-width:0}
 .pgrid.nocap{--gap:2px;gap:2px var(--gap)!important}
 .pgrid .pghint,.pgrid .empty,.pgrid .skel{width:100%}
+
+/* ===== one close control (v38) ===== */
+.xbtn{flex-shrink:0;width:44px;height:44px;margin:-6px -8px -6px 0;padding:0;border:0;background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--ink)}
+.xbtn .xc{width:32px;height:32px;border-radius:50%;background:var(--tint);display:flex;align-items:center;justify-content:center}
+.xbtn .ic{width:18px;height:18px}
+.xbtn.dark{color:#fff}.xbtn.dark .xc{background:rgba(255,255,255,.2)}
+.xbtn:active .xc{transform:scale(.92)}
+.sheethead{display:flex;align-items:center;gap:8px;min-height:32px}.sheethead h2{flex:1;min-width:0;margin:0;overflow:hidden;text-overflow:ellipsis}
+.layerclose{position:absolute;top:calc(6px + var(--top));right:10px;z-index:3}
+.pickhead{min-height:56px}.pickhead .xbtn{margin-right:-6px}
+.replybar .xbtn{margin:-8px -10px -8px 0}
+.viewclose{display:none}
