@@ -364,3 +364,5 @@ body.brandfont .ono,body.brandfont .oamt{font-family:FCMinimalBold,system-ui,san
 .logintext{display:flex;flex-direction:column;gap:2px;min-width:0}
 .logintext h1{margin:0;font-size:28px;line-height:1.15}
 .logintext p{margin:0;font-size:14px;color:var(--muted)}
+/* login logo without the white cut-out edge */
+.loginhead .loginlogo,.loginlogo{background:transparent!important;padding:0!important;box-shadow:none!important;border-radius:0!important}
