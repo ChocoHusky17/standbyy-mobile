@@ -312,3 +312,48 @@ body.brandfont .moreitem b{font-size:20px}
 .primary,.sumbtn{display:flex;align-items:center;justify-content:center;width:100%;min-height:48px;padding:0 16px;margin-top:8px;border-radius:12px;font-size:16px;font-weight:700;line-height:1.2}
 .sumbtn{border:1.5px solid var(--brand);background:transparent;color:var(--accent)}
 .sumbtn:active,.primary:active{transform:scale(.99)}
+
+/* ===== design pass 3 (v40) ===== */
+/* sections: a quiet group with its heading on a hairline, no outline or shadow (cards only for the order summary) */
+.ordersbody .ocard{border:0;background:var(--surface);border-radius:16px;box-shadow:none;padding:14px 16px;gap:6px}
+.ordersbody .ocard>b:first-child{display:block;font-size:13px;font-weight:700;color:var(--muted);padding-bottom:8px;margin-bottom:4px;border-bottom:1px solid var(--line)}
+.ordersbody .ocard .kv{padding:3px 0}
+.ordersbody{gap:12px}
+.rules{display:flex;flex-direction:column;gap:2px;font-size:13px;color:var(--muted);margin-top:6px}.rules b{color:var(--ink);font-size:13px}
+.blockers{margin:4px 0 0;padding-left:18px}.blockers li{margin:2px 0}
+/* chat bubbles: the shop speaks in wine, the bot in a dashed outline, customers in white */
+.msg.out .bubble{background:var(--brand);border-color:var(--brand);color:var(--onbrand)}
+.msg.out .bubble .quote{color:rgba(255,250,238,.78);border-left-color:rgba(255,250,238,.45)}
+.msg.out .bubble.media{color:rgba(255,250,238,.8)}
+.msg.out.bot .bubble{background:transparent;color:var(--ink);border:1.5px dashed var(--brand)}
+.msg.out.bot .bubble .quote{color:var(--muted);border-left-color:var(--line)}
+.meta{display:flex;gap:6px;align-items:baseline}.meta .who{font-weight:600}.meta .bot{color:var(--accent);font-weight:700}
+/* order rows: number and amount in the brand face, urgency first */
+.orow .rowtop{align-items:baseline}
+.ono{flex:1;font-weight:700;font-size:16px;letter-spacing:.01em}
+.oamt{font-weight:700;font-size:16px;color:var(--ink)}
+body.brandfont .ono,body.brandfont .oamt{font-family:FCMinimalBold,system-ui,sans-serif;font-weight:normal;font-size:20px}
+.ocust{font-size:14px;color:var(--ink);display:flex;gap:8px;align-items:center;margin-top:1px}
+.chan{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:0 6px}
+.orow .rowbottom{flex-wrap:wrap;gap:6px;margin-top:6px}
+.due{font-size:12px;font-weight:700;border-radius:6px;padding:2px 8px;background:var(--tint);color:var(--muted)}
+.due.soon{background:#fbf1dd;color:var(--warn)}.due.late{background:var(--danger-tint);color:var(--danger)}
+.chip.paid{background:#e7f2e9;color:var(--ok)}
+.herometa{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+/* cancelled: unmistakable in the list and on the order */
+.orow.cancelled{background:repeating-linear-gradient(135deg,transparent 0 10px,rgba(168,52,43,.04) 10px 20px)}
+.orow.cancelled .ono,.orow.cancelled .oamt{text-decoration:line-through;color:var(--muted)}
+.orow.cancelled .ocust{color:var(--muted)}
+.chip.cancel{background:var(--danger);color:#fff;font-weight:700}
+.hero.cancelled{border:2px solid var(--danger)}
+.herostatus.cancel{background:var(--danger)}
+.hero.cancelled .herototal{text-decoration:line-through;color:var(--muted)}
+.cancelnote{font-size:14px;font-weight:600;color:var(--danger)}
+/* login: the logo cut out like a standee — the one bold moment */
+.loginlogo{width:96px;height:96px;border-radius:24px;background:#fff;padding:6px;box-shadow:0 0 0 4px #fff,0 10px 24px rgba(116,41,35,.25);margin-bottom:10px}
+.login p{font-size:15px}
+@media (prefers-color-scheme:dark){
+  .due.soon{background:#3a2e1c}.chip.paid{background:#1f3324}
+  .msg.out.bot .bubble{color:var(--ink)}
+  .loginlogo{background:#2a2220;box-shadow:0 0 0 4px #2a2220,0 10px 24px rgba(0,0,0,.5)}
+}

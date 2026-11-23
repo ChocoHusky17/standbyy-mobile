@@ -163,7 +163,7 @@ function renderLogin(msg){
       err.textContent=e.status===401?'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง':e.status===429?'ลองผิดหลายครั้งเกินไป กรุณารอ 15 นาทีแล้วลองใหม่':e.message;
       err.style.display='';btn.disabled=false;
     }
-  }},h('h1',null,'Standby.y'),h('p',null,'กล่องข้อความลูกค้า สำหรับแอดมิน'),id,pw,err,btn);
+  }},h('img',{class:'loginlogo',src:'logo-mark.png',alt:''}),h('h1',null,'Standby.y'),h('p',null,'ตอบลูกค้าและดูแลออเดอร์ของร้าน'),id,pw,err,btn);
   root.replaceChildren(form);
 }
 
@@ -319,7 +319,7 @@ function fillList(){
   const sb=document.getElementById('shiftbtn');if(sb){sb.classList.toggle('on',onDuty());sb.querySelector('.st').textContent=onDuty()?'เข้าเวรอยู่':'ออกเวร'}
   if(!S.state){list.replaceChildren(...skel(7));return}
   const items=visibleList();
-  if(!items.length){list.replaceChildren(h('div',{class:'empty'},'ไม่มีแชท'));return}
+  if(!items.length){list.replaceChildren(h('div',{class:'empty'},S.search.trim()?'ไม่พบแชทที่ตรงกับ “'+S.search.trim()+'” ลองค้นด้วยชื่อหรือข้อความอื่น':S.waitOnly?'ไม่มีแชทที่รอตอบ ตอบครบแล้ว':S.section==='mine'?'ยังไม่มีแชทที่คุณดูแล รับแชทได้จากเมนู ⋯ ในแชท':'ยังไม่มีแชท'));return}
   // Rows and avatars are reused while nothing in them changed: rebuilding them on every poll made profile pictures flicker.
   const nodes=items.map(c=>{
     const m=c.messages&&c.messages[0];
@@ -527,11 +527,11 @@ function bubble(m){
   else if(m.kind==='sticker')main=stickerNode(m);
   else if((m.kind==='file')&&m.media_id)main=h('button',{type:'button',class:'bubble filebtn',onclick:ev=>downloadFile(m,ev.currentTarget)},'📎 '+(m.file_name||'ไฟล์')+' · แตะเพื่อเปิด');
   else main=h('div',{class:'bubble'+(media&&!m.body?' media':'')},m.body||label||'');
-  const who=m.direction==='outbound'?(m.bot?h('span',{class:'bot'},'บอท · '):(m.sender?m.sender+' · ':'')):'';
+  const who=m.direction==='outbound'?(m.bot?h('span',{class:'bot'},'บอท'):(m.sender?h('span',{class:'who'},m.sender):'')):'';
   const canQuote=m.direction==='inbound'&&m.quotable===true&&/^line:/.test(S.open||'');
-  const el=h('div',{class:'msg '+(m.direction==='outbound'?'out':'in'),'data-mid':m.id},
+  const el=h('div',{class:'msg '+(m.direction==='outbound'?'out':'in')+(m.bot?' bot':''),'data-mid':m.id},
     kids.length?h('div',{class:'bubble'},kids,main.className==='bubble'?main.textContent:main):main,
-    h('div',{class:'meta'},who,hm(ts(m.created)||Date.now())));;
+    h('div',{class:'meta'},who,h('span',null,hm(ts(m.created)||Date.now()))));;
   attachMsgGestures(el,m,canQuote);
   return el;
 }
@@ -912,7 +912,7 @@ async function askAI(){
     const note=r.needsAdmin?'ต้องให้แอดมินตรวจ: '+(r.reason||'')+(r.missing&&r.missing.length?'\nขาด: '+r.missing.join(', '):''):'';
     const use=h('button',{type:'button',class:'go'},'ใส่ในช่องพิมพ์'),no=h('button',{type:'button'},'ยกเลิก');
     const overlay=h('div',{class:'overlay'},h('div',{class:'sheet tall'},h('h2',null,'ร่างจาก AI'),note?h('div',{class:'note'},note):null,h('div',{class:'text'},r.draft||''),
-      h('div',{class:'meta'},'ตรวจก่อนส่งทุกครั้ง · '+(r.model||'')),h('div',{class:'actions'},no,use)));
+      h('div',{class:'meta'},'ตรวจก่อนส่งทุกครั้ง'),h('div',{class:'actions'},no,use)));
     no.onclick=()=>overlay.remove();
     use.onclick=()=>{const ta=S.chat&&S.chat.els&&S.chat.els.ta;if(ta){ta.value=r.draft||'';ta.dispatchEvent(new Event('input'));ta.focus()}overlay.remove();toast('ใส่ร่างแล้ว กรุณาตรวจก่อนส่ง')};
     document.body.append(overlay);
@@ -932,7 +932,7 @@ async function openCatalog(){
       h('div',{class:'otop'},h('b',null,t.name),t.design_included?h('span',{class:'chip'},'รวมออกแบบ'):null),
       t.spec?h('div',{class:'meta'},t.spec):null,
       h('div',{class:'items'},(t.sizes||[]).map(z=>h('div',{class:'item'},h('span',null,z.label),h('span',null,money2(z.price)+' บาท')))),
-      (t.rules&&t.rules.length)?h('div',{class:'meta'},t.rules.map(ruleText).filter(Boolean).join(' • ')+' (นับรวมทุกขนาดของสินค้านี้)'):null));
+      (t.rules&&t.rules.length)?h('div',{class:'rules'},h('b',null,'ส่วนลดตามจำนวน (นับรวมทุกขนาด)'),...t.rules.map(ruleText).filter(Boolean).map(x=>h('div',null,x))):null));
     if(c.shipping&&c.shipping.length)nodes.push(h('div',{class:'ocard'},h('b',null,'ค่าจัดส่ง'),c.shipping.map(x=>h('div',{class:'kv'},h('span',null,x.label),h('b',null,x.fee==null?'ตามจริง':money2(x.fee)+' บาท')))));
     body.replaceChildren(...(nodes.length?nodes:[h('div',{class:'empty'},'ยังไม่มีสินค้า')]));
   }catch(e){body.replaceChildren(h('div',{class:'empty'},e.message))}
@@ -1026,7 +1026,7 @@ async function openPortfolio(pick){
     typeRow.replaceChildren(h('div',{class:'tabs scroll noscrollbar'},[chip('ทั้งหมด',st.type==='all',()=>{st.type='all';st.size=null;draw()}),...lib.types.map(t=>chip(t.name,st.type===t.id,()=>{st.type=t.id;st.size=null;draw()}))]),
       h('button',{type:'button',class:'filterbtn'+(nf?' on':''),onclick:openFilters},'ตัวกรอง'+(nf?' '+nf:'')));
     const items=filtered();
-    info.textContent=items.length+' รูป'+(pick?' · แตะเพื่อเลือก กดค้างเพื่อดูรูปใหญ่':' · แตะเพื่อดูรูปใหญ่')+' · ถ่าง/บีบนิ้วเพื่อซูม';
+    info.textContent=items.length+' รูป — '+(pick?'แตะเพื่อเลือก กดค้างเพื่อดูรูปใหญ่':'แตะเพื่อดูรูปใหญ่')+' ถ่างหรือบีบนิ้วเพื่อซูม';
     grid.replaceChildren(...(items.length?items.map((i,idx)=>{
       const img=h('img',{alt:i.caption||i.type_name||'ผลงาน',loading:'lazy',decoding:'async',referrerpolicy:'no-referrer'});setThumb(i,img);
       const k=st.sel.findIndex(x=>x.id===i.id);
@@ -1244,7 +1244,7 @@ async function openDraftOrder(){
   const chat=S.open,c=conv(chat);if(!c)return;
   const lines=[];const requestID=uuid();
   const layer=h('div',{class:'overlay viewer filelayer'});
-  const head=h('div',{class:'pickhead'},h('b',null,'สร้างออเดอร์ร่าง · '+(c.customer||'')),closeBtn(()=>{layer.remove();toast('เก็บข้อมูลที่กรอกไว้ให้แล้ว')},true));
+  const head=h('div',{class:'pickhead'},h('b',null,'สร้างออเดอร์ให้ '+(c.customer||'ลูกค้า')),closeBtn(()=>{layer.remove();toast('เก็บข้อมูลที่กรอกไว้ให้แล้ว')},true));
   const body=h('div',{class:'ordersbody full'},h('div',{class:'empty'},'กำลังโหลดตารางสินค้า…'));
   layer.append(head,body);document.body.append(layer);
   let catalog,reasons=[];
@@ -1286,10 +1286,10 @@ async function openDraftOrder(){
     if(lines.length>=50){err.textContent='ใส่ได้ไม่เกิน 50 รายการ';err.style.display='';return}
     if(custom.checked){const price=Number(cPrice.value);
       if(!typeSel.value||!cSize.value.trim()||!(price>=0)||cPrice.value===''){err.textContent='เลือกประเภทสินค้า และกรอกขนาดกับราคาให้ครบ';err.style.display='';return}
-      lines.push({custom:true,label:typeSel.value+' · '+cSize.value.trim(),price,quantity:q,payload:{product_name:typeSel.value,size_label:cSize.value.trim(),quantity:q,unit_price:price}});
+      lines.push({custom:true,label:typeSel.value+' '+cSize.value.trim(),price,quantity:q,payload:{product_name:typeSel.value,size_label:cSize.value.trim(),quantity:q,unit_price:price}});
       cSize.value=cPrice.value='';
     }else{const z=catalog.find(x=>x.id===sizeSel.value);if(!z){err.textContent=typeSel.value?'เลือกขนาดก่อน':'เลือกประเภทสินค้าและขนาดก่อน';err.style.display='';return}
-      lines.push({label:z.product+' · '+z.size,price:z.price,quantity:q,payload:{size_id:z.id,quantity:q}});sizeSel.value=''}
+      lines.push({label:z.product+' '+z.size,price:z.price,quantity:q,payload:{size_id:z.id,quantity:q}});sizeSel.value=''}
     qty.value='1';redraw();
   };
   const save=h('button',{type:'button',class:'sumbtn'},'บันทึกร่าง');
@@ -1398,9 +1398,9 @@ function openSettings(){
         else if(pct>=90)nodes.push(h('div',{class:'note'},'ใกล้เต็มแล้ว'));
       }else nodes.push(h('div',{class:'kv'},h('span',null,'ใช้ไป'),h('b',null,q.used.toLocaleString('en-US')+' ข้อความ (แพ็กเกจไม่จำกัด)')));
       nodes.push(h('div',{class:'meta'},'ตัวเลขจาก LINE โดยตรง นับเฉพาะข้อความที่ส่งจากระบบ (ข้อความที่ตอบในหน้าแชทของ LINE OA Manager ไม่นับ)'),
-        h('button',{type:'button',class:'sumbtn',onclick:loadQuota},'ถามใหม่'));
+        h('button',{type:'button',class:'linkbtn',onclick:loadQuota},'อัปเดตตัวเลข'));
       quota.replaceChildren(...nodes);
-    }catch(e){quota.replaceChildren(h('b',null,'ข้อความ LINE เดือนนี้'),h('div',{class:'note err'},e.message),h('button',{type:'button',class:'sumbtn',onclick:loadQuota},'ลองใหม่'))}
+    }catch(e){quota.replaceChildren(h('b',null,'ข้อความ LINE เดือนนี้'),h('div',{class:'note err'},e.message),h('button',{type:'button',class:'linkbtn',onclick:loadQuota},'ลองใหม่'))}
   };
   const s=S.session;
   root.replaceChildren(h('div',{class:'bar'},logoImg(),h('h1',null,'ตั้งค่า')),menuTabs('settings'),
@@ -1448,17 +1448,26 @@ function fillOrders(){
   const nodes=o.rows.map(orderRow);
   if(o.error)nodes.unshift(h('div',{class:'note err'},o.error));
   if(o.loading)nodes.push(...skel(o.rows.length?2:6));
-  else if(!o.rows.length&&!o.error)nodes.push(h('div',{class:'empty'},'ไม่พบออเดอร์'));
+  else if(!o.rows.length&&!o.error)nodes.push(h('div',{class:'empty'},o.q.trim()?'ไม่พบออเดอร์ที่ตรงกับ “'+o.q.trim()+'”':'ไม่มีออเดอร์ในสถานะนี้ ลองเลือก ทั้งหมด'));
   else if(o.rows.length<o.total)nodes.push(h('button',{type:'button',class:'older',style:'margin:12px auto;display:block',onclick:()=>{o.page++;loadOrders(false)}},'โหลดเพิ่ม'));
   o.listEl.replaceChildren(...nodes);
 }
 
+// How soon the order must ship, in shop days: overdue and today in red, the next three days in amber.
+function daysLeft(v){if(!v)return null;const t=Date.parse(String(v).slice(0,10)+'T00:00:00+07:00');if(isNaN(t))return null;
+  const today=Date.parse(new Date().toLocaleDateString('en-CA',{timeZone:tz})+'T00:00:00+07:00');return Math.round((t-today)/864e5)}
+function dueChip(v,status){
+  if(['shipped','done','cancelled'].includes(status))return null;
+  const n=daysLeft(v);if(n==null)return null;
+  const t=n<0?'เลยกำหนด '+(-n)+' วัน':n===0?'ส่งวันนี้':n===1?'ส่งพรุ่งนี้':'อีก '+n+' วัน';
+  return h('span',{class:'due '+(n<=0?'late':n<=3?'soon':'')},t);
+}
 function orderRow(r){
-  return h('button',{type:'button',class:'row',onclick:()=>openOrderDetail(r.id)},
+  return h('button',{type:'button',class:'row orow'+(r.status==='cancelled'?' cancelled':''),onclick:()=>openOrderDetail(r.id)},
     h('div',{class:'rowmain'},
-      h('div',{class:'rowtop'},h('div',{class:'rowname'},r.order_no+' · '+(r.customer_name||'')),h('div',{class:'rowtime'},baht(r.total))),
-      h('div',{class:'rowbottom'},h('span',{class:'chip'},STATUS[r.status]||r.status),h('span',{class:'chip'+(r.payment_status==='paid'?'':' wait')},PAY[r.payment_status]||'ยังไม่ชำระ'),
-        h('span',{class:'rowpreview'},(CHANNEL[r.source_channel]||r.source_channel||'')+' · ส่งของ '+dateTh(r.needed_by_date)))));
+      h('div',{class:'rowtop'},h('div',{class:'ono'},r.order_no),h('div',{class:'oamt'},baht(r.total))),
+      h('div',{class:'ocust'},r.customer_name||'ไม่มีชื่อลูกค้า',r.source_channel?h('span',{class:'chan'},CHANNEL[r.source_channel]||r.source_channel):null),
+      h('div',{class:'rowbottom'},dueChip(r.needed_by_date,r.status),r.status==='cancelled'?h('span',{class:'chip cancel'},'ยกเลิกแล้ว'):h('span',{class:'chip'},STATUS[r.status]||r.status),r.status==='cancelled'?null:h('span',{class:'chip'+(r.payment_status==='paid'?' paid':' wait')},PAY[r.payment_status]||'ยังไม่ชำระ'))));
 }
 // The chat's "ออเดอร์" button: the same order screens as รายการออเดอร์, for the orders linked to this chat.
 async function openChatOrders(){
@@ -1489,7 +1498,7 @@ async function openOrderDetail(id){
     try{
       const [d,opt]=await Promise.all([rpc('inbox_order_detail',{p_order:id}),rpc('inbox_order_status_options',{p_order:id})]);
       if(S.ord!==o||o.view!=='detail')return;
-      const nodes=[orderHero(d),orderCard(d,true)];
+      const nodes=[orderHero(d,opt),orderCard(d,true)];
       const info=[];
       if(d.design_approved_planned)info.push(['อนุมัติแบบ (แผน)',dateTh(d.design_approved_planned)]);
       if(d.ship_by_planned)info.push(['วันส่งของ (แผน)',dateTh(d.ship_by_planned)]);
@@ -1515,7 +1524,7 @@ function statusBlock(d,opt,redraw,confirmOrder){
   // An inquiry opened from its chat is confirmed with the plan check (ยืนยันสั่งงาน), in place of a plain status move.
   if(confirmOrder)box.append(h('button',{type:'button',class:'primary',onclick:confirmOrder},'ยืนยันสั่งงาน…'));
   else if(opt.next){const b=h('button',{type:'button',class:'primary',disabled:opt.next_blockers.length>0,onclick:()=>move(opt.next,opt.next_label)},'เปลี่ยนเป็น '+opt.next_label);box.append(b);
-    if(opt.next_blockers.length)box.append(h('div',{class:'note'},'ยังขาด: '+opt.next_blockers.join(' · ')))}
+    if(opt.next_blockers.length)box.append(h('div',{class:'note'},h('b',null,'ยังขาดก่อนไปขั้นถัดไป'),h('ul',{class:'blockers'},opt.next_blockers.map(x=>h('li',null,x)))))}
   if(opt.can_restore){if(opt.cancel_reason)box.append(h('div',{class:'meta'},'เหตุผลที่ยกเลิก: '+opt.cancel_reason));box.append(h('button',{type:'button',class:'primary',onclick:()=>move('confirmed','คอนเฟิร์มแล้ว')},'กลับมาใช้งาน (คอนเฟิร์มแล้ว)'))}
   const links=h('div',{class:'linkrow'});box.append(links);
   if(opt.previous)links.append(h('button',{type:'button',class:'linkbtn',disabled:opt.previous_blockers.length>0,onclick:()=>move(opt.previous,opt.previous_label)},'ย้อนเป็น '+opt.previous_label));
@@ -1529,15 +1538,20 @@ const STATUS={inquiry:'รอคอนเฟิร์ม',confirmed:'คอน�
 const SHIP={ems:'EMS',grab_normal:'Grab',grab_from_customer:'Grab (ลูกค้าเรียก)',pickup:'รับที่ร้าน'};
 const PAY={paid:'ชำระเต็มแล้ว',deposit:'ชำระมัดจำแล้ว'};
 function dateTh(v){if(!v)return '-';const d=Date.parse(String(v).slice(0,10)+'T00:00:00+07:00');return isNaN(d)?String(v):new Date(d).toLocaleDateString('th-TH',{timeZone:tz,day:'numeric',month:'short',year:'numeric'})}
-function orderHero(d){
+function orderHero(d,opt){
+  if(d.status==='cancelled')return h('div',{class:'hero cancelled'},
+    h('div',{class:'herotop'},h('span',{class:'herono'},d.order_no),h('span',{class:'herostatus cancel'},'ยกเลิกแล้ว')),
+    d.customer_name?h('div',{class:'herocust'},d.customer_name):null,
+    h('div',{class:'herototal'},baht(d.total)),
+    h('div',{class:'cancelnote'},opt&&opt.cancel_reason?'เหตุผล: '+opt.cancel_reason:'ออเดอร์นี้ถูกยกเลิก ไม่ต้องผลิตหรือส่ง'));
   const paid=d.payment_status==='paid',dep=d.deposit_amount==null?null:Number(d.deposit_amount);
   const due=paid?0:d.payment_status==='deposit'?(dep==null?null:Math.max(0,Number(d.total||0)-dep)):Number(d.total||0);
   return h('div',{class:'hero'},
     h('div',{class:'herotop'},h('span',{class:'herono'},d.order_no),h('span',{class:'herostatus'},STATUS[d.status]||'ไม่ทราบสถานะ')),
     d.customer_name?h('div',{class:'herocust'},d.customer_name):null,
     h('div',{class:'herototal'},baht(d.total)),
-    h('div',{class:'heropay'+(paid?' ok':'')},paid?'ชำระครบแล้ว':(PAY[d.payment_status]||'ยังไม่ชำระ')+(due==null?'':' · ค้างชำระ '+baht(due))),
-    h('div',{class:'herometa'},'วันส่งของ '+dateTh(d.needed_by_date)+' · '+(SHIP[d.shipping_method]||'รอคอนเฟิร์มการจัดส่ง')));
+    h('div',{class:'heropay'+(paid?' ok':'')},paid?'ชำระครบแล้ว':(PAY[d.payment_status]||'ยังไม่ชำระ')+(due==null?'':' — ค้าง '+baht(due))),
+    h('div',{class:'herometa'},h('span',null,'ส่งของ '+dateTh(d.needed_by_date)),dueChip(d.needed_by_date,d.status),h('span',null,SHIP[d.shipping_method]||'ยังไม่เลือกวิธีส่ง')));
 }
 function orderCard(o,noTop){
   const row=(k,v)=>h('div',{class:'kv'},h('span',null,k),h('b',null,v));
@@ -1545,7 +1559,7 @@ function orderCard(o,noTop){
     noTop?null:h('div',{class:'otop'},h('b',null,o.order_no),h('span',{class:'chip'},STATUS[o.status]||'ไม่ทราบสถานะ')),
     row('ชำระเงิน',PAY[o.payment_status]||'ยังไม่ชำระ'),
     row('วันส่งของ',dateTh(o.needed_by_date)),
-    row('จัดส่ง',(SHIP[o.shipping_method]||'รอคอนเฟิร์ม')+(o.tracking_no?' · '+o.tracking_no:'')),
+    row('จัดส่ง',SHIP[o.shipping_method]||'รอคอนเฟิร์ม'),o.tracking_no?row('เลขพัสดุ',o.tracking_no):null,
     h('div',{class:'items'},(o.items||[]).map(i=>h('div',{class:'item'},h('span',null,i.product_name+' '+(i.size_label||'')+' × '+i.quantity),h('span',null,baht(i.line_total))))),
     o.discount_amount?row('ส่วนลด','-'+baht(o.discount_amount)):null,
     o.rush_fee?row('ค่างานด่วน',baht(o.rush_fee)):null,
@@ -1610,7 +1624,7 @@ function drawTeam(toBottom){
     const mine=m.author===S.session.id;
     nodes.push(h('div',{class:'msg '+(mine?'out':'in')},
       h('div',{class:'bubble'},m.conversation?h('button',{type:'button',class:'quote',onclick:()=>{closeTeam();openChat(m.conversation)}},'🗂 เคส: '+(m.customer||'ลูกค้า')):null,mentionBody(m)),
-      h('div',{class:'meta'},(mine?'':m.author_name+' · ')+hm(ms))));
+      h('div',{class:'meta'},mine?null:h('span',{class:'who'},m.author_name),h('span',null,hm(ms)))));
   }
   if(!nodes.length)nodes.push(h('div',{class:'empty'},'ยังไม่มีข้อความ'));
   box.replaceChildren(...nodes);
