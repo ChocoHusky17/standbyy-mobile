@@ -148,7 +148,7 @@ function renderList(){
     const list=h('div',{class:'list'});
     const net=h('div',{class:'note err',id:'neterr',style:'display:none'});
     root.replaceChildren(
-      h('div',{class:'bar'},h('h1',null,'แชทลูกค้า',h('small',{id:'whoami'},(s.name||s.id)+' · v11')),h('button',{type:'button',id:'shiftbtn',onclick:toggleShift},'เวร'),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
+      h('div',{class:'bar'},h('h1',null,'แชทลูกค้า',h('small',{id:'whoami'},(s.name||s.id)+' · v12')),h('button',{type:'button',id:'shiftbtn',onclick:toggleShift},'เวร'),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
       tabs,h('div',{class:'search'},search),net,list);
     listEls={list,tabs,net};
   }
@@ -628,11 +628,33 @@ async function downloadFile(m,btn){
   try{
     const blob=await authed(async()=>{const r=await fetch(API+'/v1/message-file?id='+encodeURIComponent(m.id),{headers:{Authorization:'Bearer '+S.session.token},cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer'});
       if(!r.ok)throw new ApiError(r.status,'ไฟล์ยังไม่พร้อมหรือเปิดไม่ได้');return r.blob()});
-    const url=URL.createObjectURL(blob);
-    const a=h('a',{href:url,download:m.file_name||'file',target:'_blank',rel:'noopener'});document.body.append(a);a.click();a.remove();
-    setTimeout(()=>URL.revokeObjectURL(url),60000);
+    fileSheet(m,blob);
   }catch(e){toast(e.message)}
   finally{btn.disabled=false;btn.textContent=old}
+}
+// A file never replaces the app's own page (the home-screen app has no back button): view it in a layer with a close button, or share/save it.
+function fileSheet(m,blob){
+  const name=m.file_name||'file',url=URL.createObjectURL(blob);
+  const done=()=>{URL.revokeObjectURL(url);overlay.remove()};
+  const view=h('button',{type:'button',class:'go'},'เปิดดู');
+  const share=h('button',{type:'button'},'แชร์ / บันทึก');
+  const close=h('button',{type:'button'},'ปิด');
+  const overlay=h('div',{class:'overlay'},h('div',{class:'sheet'},h('h2',null,'📎 '+name),h('div',{class:'meta'},Math.round(blob.size/1024)+' KB'),h('div',{class:'actions'},close,share,view)));
+  close.onclick=done;
+  view.onclick=()=>{
+    const layer=h('div',{class:'overlay viewer filelayer'},
+      /^image\//.test(blob.type)?h('img',{src:url,alt:name}):h('iframe',{src:url,title:name}),
+      h('button',{type:'button',class:'viewclose',onclick:()=>layer.remove()},'✕'));
+    document.body.append(layer);
+  };
+  share.onclick=async()=>{
+    try{
+      const f=new File([blob],name,{type:blob.type||'application/octet-stream'});
+      if(navigator.canShare&&navigator.canShare({files:[f]}))await navigator.share({files:[f],title:name});
+      else{const a=h('a',{href:url,download:name});document.body.append(a);a.click();a.remove()}
+    }catch(e){if(e&&e.name!=='AbortError')toast('แชร์ไม่สำเร็จ ลอง "เปิดดู"')}
+  };
+  document.body.append(overlay);
 }
 // ---- AI draft (drafted on the server from the saved case details; nothing is sent)
 async function askAI(){
