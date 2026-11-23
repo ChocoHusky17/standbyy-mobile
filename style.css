@@ -93,3 +93,7 @@ button{font:inherit;color:inherit}
 .replybar{display:flex;align-items:center;gap:8px;padding:6px 14px;background:var(--tint);border-top:1px solid var(--line);font-size:13px;color:var(--brand);flex-shrink:0}
 .replybar span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.replybar button{border:0;background:transparent;font-size:16px;color:var(--muted)}
 .qbody{font-weight:400;font-size:13px;color:var(--muted);white-space:pre-wrap;max-height:3.9em;overflow:hidden;margin-top:2px}
+.filebtn{text-align:left;color:var(--brand);font:inherit;cursor:pointer}
+.fld{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+.fld input,.fld textarea,.fld select{border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:16px;font-family:inherit;background:var(--cream);color:var(--ink)}
+.attach{width:36px;height:42px;font-size:20px}

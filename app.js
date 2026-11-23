@@ -148,7 +148,7 @@ function renderList(){
     const list=h('div',{class:'list'});
     const net=h('div',{class:'note err',id:'neterr',style:'display:none'});
     root.replaceChildren(
-      h('div',{class:'bar'},h('h1',null,'แชทลูกค้า',h('small',{id:'whoami'},(s.name||s.id)+' · v10')),h('button',{type:'button',id:'shiftbtn',onclick:toggleShift},'เวร'),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
+      h('div',{class:'bar'},h('h1',null,'แชทลูกค้า',h('small',{id:'whoami'},(s.name||s.id)+' · v11')),h('button',{type:'button',id:'shiftbtn',onclick:toggleShift},'เวร'),h('button',{type:'button','aria-label':'แจ้งเตือน',onclick:openPushSheet},'🔔'),h('button',{type:'button',onclick:()=>{if(confirm('ออกจากระบบ?'))logout(false)}},'ออก')),
       tabs,h('div',{class:'search'},search),net,list);
     listEls={list,tabs,net};
   }
@@ -198,7 +198,8 @@ function buildChat(){
   const file=h('input',{type:'file',accept:'image/*',style:'display:none',onchange:()=>{const f=file.files[0];file.value='';if(f)askSendImage(f)}});
   const attach=h('button',{type:'button',class:'attach','aria-label':'ส่งรูป',onclick:()=>{if(!sendBlock()&&!S.sending)file.click()}},'📷');
   const quick=h('button',{type:'button',class:'attach','aria-label':'ข้อความด่วน',onclick:()=>{if(!sendBlock())openQuick()}},'⚡');
-  const comp=h('div',{class:'composer'},attach,quick,file,ta,send);
+  const ai=h('button',{type:'button',class:'attach','aria-label':'ร่างคำตอบด้วย AI',onclick:()=>{if(!sendBlock())askAI()}},'✨');
+  const comp=h('div',{class:'composer'},attach,quick,ai,file,ta,send);
   S.chat.els={ta,send,msgs,note,comp,replybar:null,title:h('h1',null,c.customer||'แชท')};
   root.replaceChildren(h('div',{class:'bar'},h('button',{type:'button',class:'back','aria-label':'กลับ',onclick:closeChat},'‹'),S.chat.els.title,h('button',{type:'button',onclick:openOrders},'ออเดอร์'),h('button',{type:'button','aria-label':'เมนูแชท',onclick:openChatMenu},'⋯')),note,msgs,comp);
   refreshSend();
@@ -306,6 +307,7 @@ function bubble(m){
   let main;
   if(isPic)main=picNode(m);
   else if(m.kind==='sticker')main=stickerNode(m);
+  else if((m.kind==='file')&&m.media_id)main=h('button',{type:'button',class:'bubble filebtn',onclick:ev=>downloadFile(m,ev.currentTarget)},'📎 '+(m.file_name||'ไฟล์')+' · แตะเพื่อเปิด');
   else main=h('div',{class:'bubble'+(media&&!m.body?' media':'')},m.body||label||'');
   const who=m.direction==='outbound'?(m.bot?h('span',{class:'bot'},'บอท · '):(m.sender?m.sender+' · ':'')):'';
   const canQuote=m.direction==='inbound'&&m.quotable===true&&/^line:/.test(S.open||'');
@@ -610,6 +612,7 @@ function openChatMenu(){
       if(!others.length)items.push(h('div',{class:'empty small'},'ไม่มีแอดมินคนอื่นที่เข้าเวรอยู่'));
       others.forEach(a=>items.push(btn(a.name,()=>run(()=>api('/v1/handoff',{id,owner:a.id}),'ส่งต่อให้ '+a.name+' แล้ว'))));
     }
+    items.push(btn('📝 ข้อมูลเคสและสถานะแชท',()=>{overlay.remove();openDetails()}));
     items.push(btn(c.action_required?'⚑ ยกเลิกธง "ต้องดำเนินการ"':'⚑ ติดธง "ต้องดำเนินการ"',()=>run(()=>api('/v1/action-required',{id,required:!c.action_required,version:c.action_version||1}))));
     if(Array.isArray(S.state.pinnedConversationIDs))items.push(btn(isPinned(c)?'📌 เลิกปักหมุด':'📌 ปักหมุดแชทนี้',()=>run(()=>rpc('inbox_set_chat_pin',{p_id:id,p_pinned:!isPinned(c)}))));
     if(c.line_chat_url&&/^https:\/\/chat\.line\.biz\//.test(c.line_chat_url))items.push(h('a',{class:'menuitem',href:c.line_chat_url,target:'_blank',rel:'noopener noreferrer'},'เปิดแชทใน LINE Official Account'));
@@ -617,6 +620,69 @@ function openChatMenu(){
     sheet.replaceChildren(...items);
   }
   draw();
+}
+
+// ---- files
+async function downloadFile(m,btn){
+  const old=btn.textContent;btn.disabled=true;btn.textContent='กำลังโหลด…';
+  try{
+    const blob=await authed(async()=>{const r=await fetch(API+'/v1/message-file?id='+encodeURIComponent(m.id),{headers:{Authorization:'Bearer '+S.session.token},cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer'});
+      if(!r.ok)throw new ApiError(r.status,'ไฟล์ยังไม่พร้อมหรือเปิดไม่ได้');return r.blob()});
+    const url=URL.createObjectURL(blob);
+    const a=h('a',{href:url,download:m.file_name||'file',target:'_blank',rel:'noopener'});document.body.append(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),60000);
+  }catch(e){toast(e.message)}
+  finally{btn.disabled=false;btn.textContent=old}
+}
+// ---- AI draft (drafted on the server from the saved case details; nothing is sent)
+async function askAI(){
+  const id=S.open,c=conv(id);if(!c||S.aiBusy)return;
+  S.aiBusy=true;toast('กำลังร่างคำตอบ…');
+  try{
+    const r=await api('/v1/ai/draft',{id,version:c.version});
+    if(S.open!==id){return}
+    const cur=conv(id);if(!cur||cur.version!==c.version){toast('ข้อมูลแชทเปลี่ยนระหว่างร่าง ลองอีกครั้ง');return}
+    const note=r.needsAdmin?'ต้องให้แอดมินตรวจ: '+(r.reason||'')+(r.missing&&r.missing.length?'\nขาด: '+r.missing.join(', '):''):'';
+    const use=h('button',{type:'button',class:'go'},'ใส่ในช่องพิมพ์'),no=h('button',{type:'button'},'ยกเลิก');
+    const overlay=h('div',{class:'overlay'},h('div',{class:'sheet tall'},h('h2',null,'ร่างจาก AI'),note?h('div',{class:'note'},note):null,h('div',{class:'text'},r.draft||''),
+      h('div',{class:'meta'},'ตรวจก่อนส่งทุกครั้ง · '+(r.model||'')),h('div',{class:'actions'},no,use)));
+    no.onclick=()=>overlay.remove();
+    use.onclick=()=>{const ta=S.chat&&S.chat.els&&S.chat.els.ta;if(ta){ta.value=r.draft||'';ta.dispatchEvent(new Event('input'));ta.focus()}overlay.remove();toast('ใส่ร่างแล้ว กรุณาตรวจก่อนส่ง')};
+    document.body.append(overlay);
+  }catch(e){toast(e.message||'สร้างร่างไม่สำเร็จ')}
+  finally{S.aiBusy=false}
+}
+// ---- case details and chat status
+const CHAT_STATUS=[['waiting','รอแอดมิน'],['waiting_customer','รอลูกค้า'],['closed','จบการสนทนา']];
+function openDetails(){
+  const id=S.open,c=conv(id);if(!c)return;
+  const d=c.details||{};
+  const f=(label,key,type)=>{const el=type==='area'?h('textarea',{rows:3}):h('input',{type:type==='num'?'number':'text',inputmode:type==='num'?'numeric':null});
+    el.value=d[key]==null?'':String(d[key]);return {label,key,el,type}};
+  const fields=[f('สินค้า','product'),f('ขนาด','size'),f('จำนวน','quantity','num'),f('วันที่ใช้งาน','eventDate'),f('การจัดส่ง','delivery'),f('บันทึก','notes','area')];
+  const sel=h('select',null,CHAT_STATUS.map(([v,t])=>h('option',{value:v,selected:c.status===v},t)));
+  const blocked=c.owner&&c.owner!==S.session.id?'แชทนี้เป็นของ '+adminName(c.owner)+' แก้ไขไม่ได้':'';
+  const save=h('button',{type:'button',class:'go',disabled:!!blocked},'บันทึก'),close=h('button',{type:'button'},'ปิด');
+  const stage=d.orderStage?h('div',{class:'kv'},h('span',null,'ขั้นของงาน'),h('b',null,d.orderStage)):null;
+  const overlay=h('div',{class:'overlay'},h('div',{class:'sheet tall'},h('h2',null,'ข้อมูลเคส · '+(c.customer||'')),blocked?h('div',{class:'note'},blocked):null,stage,
+    ...fields.map(x=>h('label',{class:'fld'},h('span',null,x.label),x.el)),h('label',{class:'fld'},h('span',null,'สถานะแชท'),sel),h('div',{class:'actions'},close,save)));
+  close.onclick=()=>overlay.remove();
+  save.onclick=async()=>{
+    save.disabled=close.disabled=true;
+    try{
+      const details={};
+      for(const x of fields){const v=x.el.value.trim();if(x.type==='num'){if(v!==''){const n=Number(v);if(!Number.isInteger(n)||n<1||n>999)throw new Error('จำนวนต้องเป็นเลข 1-999');details[x.key]=n}}else details[x.key]=v}
+      let cur=conv(id);
+      if(!(onDuty()&&cur.owner===S.session.id)){
+        if(cur.owner&&cur.owner!==S.session.id)throw new Error('แชทนี้เป็นของ '+adminName(cur.owner));
+        if(!confirm('ต้องเข้าเวรและรับแชทนี้ก่อนจึงแก้ข้อมูลได้ ทำเลยไหม?')){save.disabled=close.disabled=false;return}
+        await api('/v1/prepare-reply',{id,version:cur.version});await poll(true);cur=conv(id);
+      }
+      await api('/v1/details',{id,version:cur.version,status:sel.value,details});
+      overlay.remove();toast('บันทึกแล้ว');await poll(true);
+    }catch(e){toast(e.message);save.disabled=close.disabled=false}
+  };
+  document.body.append(overlay);
 }
 
 // ---- orders linked to this chat (read only; editing stays in the Mac app)
