@@ -1495,8 +1495,7 @@ async function openOrderDetail(id){
       if(d.ship_by_planned)info.push(['วันส่งของ (แผน)',dateTh(d.ship_by_planned)]);
       if(d.priority&&d.priority!=='normal')info.push(['ความสำคัญ',d.priority]);
       if(info.length)nodes.push(h('div',{class:'ocard'},info.map(([k,v])=>h('div',{class:'kv'},h('span',null,k),h('b',null,v)))));
-      if(o.fromChat&&d.status==='inquiry'&&S.chat)nodes.push(h('button',{type:'button',class:'sumbtn',onclick:()=>confirmOrderSheet(d,draw)},'✅ ยืนยันสั่งงาน…'));
-      nodes.push(statusBlock(d,opt,draw));
+      nodes.push(statusBlock(d,opt,draw,o.fromChat&&d.status==='inquiry'&&S.chat?()=>confirmOrderSheet(d,draw):null));
       nodes.push(paymentBlock(d,draw));
       nodes.push(shippingBlock(d,draw));
       if(!o.fromChat&&d.conversation_id&&conv(d.conversation_id))nodes.push(h('button',{type:'button',class:'menuitem',onclick:()=>{S.ord=null;openChat(d.conversation_id)}},'💬 เปิดแชทลูกค้า'));
@@ -1505,7 +1504,7 @@ async function openOrderDetail(id){
   }
   draw();
 }
-function statusBlock(d,opt,redraw){
+function statusBlock(d,opt,redraw,confirmOrder){
   const box=h('div',{class:'ocard'},h('b',null,'สถานะงาน: '+(opt.status_label||STATUS[d.status])));
   const msg=h('div',{class:'note err',style:'display:none'});
   const move=async(to,label,reason)=>{
@@ -1513,7 +1512,9 @@ function statusBlock(d,opt,redraw){
     try{await rpc('inbox_set_order_status',{p_order:d.id,p_expected:opt.status,p_to:to,p_reason:reason||null});toast('เปลี่ยนสถานะแล้ว');redraw()}
     catch(e){msg.textContent=e.message;msg.style.display='';redraw&&setTimeout(()=>{},0)}
   };
-  if(opt.next){const b=h('button',{type:'button',class:'primary',disabled:opt.next_blockers.length>0,onclick:()=>move(opt.next,opt.next_label)},'เปลี่ยนเป็น '+opt.next_label);box.append(b);
+  // An inquiry opened from its chat is confirmed with the plan check (ยืนยันสั่งงาน), in place of a plain status move.
+  if(confirmOrder)box.append(h('button',{type:'button',class:'primary',onclick:confirmOrder},'ยืนยันสั่งงาน…'));
+  else if(opt.next){const b=h('button',{type:'button',class:'primary',disabled:opt.next_blockers.length>0,onclick:()=>move(opt.next,opt.next_label)},'เปลี่ยนเป็น '+opt.next_label);box.append(b);
     if(opt.next_blockers.length)box.append(h('div',{class:'note'},'ยังขาด: '+opt.next_blockers.join(' · ')))}
   if(opt.can_restore){if(opt.cancel_reason)box.append(h('div',{class:'meta'},'เหตุผลที่ยกเลิก: '+opt.cancel_reason));box.append(h('button',{type:'button',class:'primary',onclick:()=>move('confirmed','คอนเฟิร์มแล้ว')},'กลับมาใช้งาน (คอนเฟิร์มแล้ว)'))}
   const links=h('div',{class:'linkrow'});box.append(links);

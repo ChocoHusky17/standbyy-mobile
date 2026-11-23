@@ -307,3 +307,8 @@ body.brandfont .moreitem b{font-size:20px}
 .pickhead{min-height:56px}.pickhead .xbtn{margin-right:-6px}
 .replybar .xbtn{margin:-8px -10px -8px 0}
 .viewclose{display:none}
+
+/* one button size: primary (filled) and secondary (outline) are the same height, width and type */
+.primary,.sumbtn{display:flex;align-items:center;justify-content:center;width:100%;min-height:48px;padding:0 16px;margin-top:8px;border-radius:12px;font-size:16px;font-weight:700;line-height:1.2}
+.sumbtn{border:1.5px solid var(--brand);background:transparent;color:var(--accent)}
+.sumbtn:active,.primary:active{transform:scale(.99)}
