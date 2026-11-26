@@ -455,12 +455,15 @@ function refreshSend(){
   }else e.note.style.display='none';
 }
 function noteChat(t){const e=S.chat&&S.chat.els;if(e){e.note.textContent=t;e.note.className='note err';e.note.style.display=''}}
+// ch.messages is kept in the order pages arrive. Loaded = by sequence (the newest one fetched), shown = by time.
+const maxSeq=list=>list.reduce((a,m)=>m.sequence!=null&&m.sequence>a?m.sequence:a,0);
+const earliestByTime=list=>list.reduce((a,m)=>!a||(ts(m.created)||0)<(ts(a.created)||0)||((ts(m.created)||0)===(ts(a.created)||0)&&m.sequence<a.sequence)?m:a,null);
 function updateChat(){
   const c=conv(S.open);
   if(c&&S.chat&&S.chat.els)S.chat.els.title.replaceChildren(c.customer||'แชท');
   refreshSend();
   if(!S.chat||S.chat.loading||S.chat.fetching)return;
-  const last=S.chat.messages.length?S.chat.messages[S.chat.messages.length-1].sequence:0;
+  const last=maxSeq(S.chat.messages);
   const m=c&&c.messages&&c.messages[0];
   if(m&&m.sequence!=null&&m.sequence<=last&&(c.unread_count||0)===0)return;
   fetchNew();
@@ -469,7 +472,7 @@ async function fetchNew(){
   const ch=S.chat;if(!ch||ch.fetching)return;ch.fetching=true;
   try{
     for(let i=0;i<5;i++){
-      const last=ch.messages.length?ch.messages[ch.messages.length-1].sequence:0;
+      const last=maxSeq(ch.messages);
       const p=await rpc('inbox_message_page',{p_id:ch.id,p_after:last});
       if(S.chat!==ch)return;
       if(!p.messages.length)break;
@@ -486,7 +489,7 @@ async function fetchNew(){
 let lastRead=null;
 function markRead(){
   const c=conv(S.open);if(!c||!S.chat||!S.chat.messages.length)return;
-  const cursor=S.chat.messages[S.chat.messages.length-1].sequence;
+  const cursor=maxSeq(S.chat.messages);
   if(!(c.unread_count>0)&&c.read_cursor!=null&&c.read_cursor>=cursor)return;
   if(lastRead===S.open+':'+cursor)return;lastRead=S.open+':'+cursor;
   api('/v1/read',{id:S.open,cursor}).then(()=>{c.unread_count=0;updateTitle()}).catch(()=>{lastRead=null});
@@ -579,7 +582,7 @@ function drawMessages(toBottom){
 async function loadOlder(){
   const ch=S.chat;if(!ch||!ch.messages.length)return;
   try{
-    const p=await rpc('inbox_message_page',{p_id:ch.id,p_before:ch.messages[0].sequence});
+    const p=await rpc('inbox_message_page',{p_id:ch.id,p_before:earliestByTime(ch.messages).sequence});
     if(S.chat!==ch)return;
     ch.messages=p.messages.concat(ch.messages);ch.hasMore=p.has_more;ch.keepOffset=true;drawMessages(false);
   }catch(e){toast(e.message)}
