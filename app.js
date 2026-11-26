@@ -559,7 +559,10 @@ function drawMessages(toBottom){
   const nodes=[];
   if(ch.hasMore)nodes.push(h('button',{type:'button',class:'older',onclick:loadOlder},'โหลดข้อความเก่ากว่า'));
   let day=null;
-  for(const m of ch.messages){
+  // Shown by time; ch.messages stays in server order (sequence) for paging. Messages typed in LINE OA Manager
+  // are imported a little after they were sent.
+  const shown=ch.messages.map((m,i)=>[m,i]).sort((a,b)=>((ts(a[0].created)||Infinity)-(ts(b[0].created)||Infinity))||((a[0].sequence||Infinity)-(b[0].sequence||Infinity))||(a[1]-b[1])).map(x=>x[0]);
+  for(const m of shown){
     const t=ts(m.created)||Date.now(),k=dayKey(t);
     if(k!==day){day=k;nodes.push(h('div',{class:'day'},dayLabel(t)))}
     if(ch.unreadFromId&&m.id===ch.unreadFromId)nodes.push(h('div',{class:'day newdiv',id:'newdiv'},'ข้อความใหม่'));
