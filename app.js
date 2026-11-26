@@ -35,11 +35,19 @@ const TH_ERR={'Start your shift first':'ต้องเข้าเวรก่�
  'Choose an active on-duty admin or return to queue':'เลือกแอดมินที่เข้าเวรอยู่ หรือคืนเข้าคิวกลาง','Only assigned admin or owner can hand off this chat':'เฉพาะเจ้าของแชทหรือ owner เท่านั้นที่ส่งต่อได้',
  'Conversation unavailable or already assigned':'แชทนี้มีผู้ดูแลแล้ว','Action status changed; reload before saving':'สถานะเปลี่ยนจากเครื่องอื่น ลองอีกครั้ง'};
 class ApiError extends Error{constructor(status,message){super(TH_ERR[message]||message);this.status=status}}
+// A request that hangs (common on iPhone when the app comes back from the background) must not
+// block everything after it, so every call gives up after a while: 20 s, plus time for big uploads.
+function timedFetch(url,opts,ms){
+  const ctl=new AbortController(),t=setTimeout(()=>ctl.abort(),ms);
+  return fetch(url,Object.assign({},opts,{signal:ctl.signal}))
+    .then(r=>r.text().then(text=>({ok:r.ok,status:r.status,text})))
+    .catch(e=>{throw new ApiError(0,ctl.signal.aborted?'เซิร์ฟเวอร์ตอบช้าเกินไป กำลังลองใหม่':'ติดต่อเซิร์ฟเวอร์ไม่ได้ ตรวจสอบอินเทอร์เน็ต')})
+    .finally(()=>clearTimeout(t));
+}
 async function post(url,body,headers){
-  let r;
-  try{r=await fetch(url,{method:'POST',headers:Object.assign({'Content-Type':'application/json'},headers||{}),body:JSON.stringify(body),cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer'})}
-  catch(e){throw new ApiError(0,'ติดต่อเซิร์ฟเวอร์ไม่ได้ ตรวจสอบอินเทอร์เน็ต')}
-  let data=null;try{data=await r.json()}catch(e){}
+  const json=JSON.stringify(body);
+  const r=await timedFetch(url,{method:'POST',headers:Object.assign({'Content-Type':'application/json'},headers||{}),body:json,cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer'},20000+Math.floor(json.length/10));
+  let data=null;try{data=JSON.parse(r.text)}catch(e){}
   if(!r.ok)throw new ApiError(r.status,(data&&(data.message||data.error))||('ผิดพลาด ('+r.status+')'));
   return data;
 }
@@ -170,7 +178,11 @@ function renderLogin(msg){
 // ---- state polling
 function conv(id){return S.state&&S.state.conversations.find(c=>c.id===id)}
 function adminName(id){const a=S.state&&S.state.admins&&S.state.admins.find(x=>x.id===id);return a?a.name:id}
+let polling=false;
 async function poll(force){
+  // One poll at a time; a forced one (opening the app, coming back online) still waits its turn.
+  if(polling){if(force)S.pollAgain=true;return}
+  polling=true;
   try{
     const r=await rpc('inbox_poll_summary',{p_revision:force?0:S.revision});
     if(r.state){S.state=r.state;S.revision=r.revision}
@@ -178,6 +190,7 @@ async function poll(force){
     if(S.team)updateTeam();else if(S.ord||S.ph){}else if(S.open)updateChat();else{renderList();if(S.teamTick++%3===0)teamPeek()}
     updateTitle();netState(true);notifJump();
   }catch(e){if(e.status!==401){showNetErr(e);netState(false)}}
+  finally{polling=false;if(S.pollAgain){S.pollAgain=false;if(S.session)setTimeout(()=>poll(true),0)}}
 }
 // Tapping a push notification: if exactly one chat has something new for me (mine or free), open it.
 function notifJump(){
@@ -1433,9 +1446,8 @@ async function confirmOrderSheet(d,redraw){
 
 // ---- ตั้งค่า: LINE message allowance (from LINE itself), notifications, account
 function apiGet(path){return authed(async()=>{
-  let r;try{r=await fetch(API+path,{headers:{Authorization:'Bearer '+S.session.token},cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer'})}
-  catch(e){throw new ApiError(0,'ติดต่อเซิร์ฟเวอร์ไม่ได้ ตรวจสอบอินเทอร์เน็ต')}
-  let d=null;try{d=await r.json()}catch(e){}
+  const r=await timedFetch(API+path,{headers:{Authorization:'Bearer '+S.session.token},cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer'},20000);
+  let d=null;try{d=JSON.parse(r.text)}catch(e){}
   if(!r.ok)throw new ApiError(r.status,(d&&(d.message||d.error))||('ผิดพลาด ('+r.status+')'));
   return d;
 })}
