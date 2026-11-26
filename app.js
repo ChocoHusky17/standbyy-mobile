@@ -24,7 +24,12 @@ function uuid(){return crypto.randomUUID?crypto.randomUUID():'xxxxxxxx-xxxx-4xxx
 function ts(v){if(v==null)return null;if(typeof v==='number')return v>1e12?v:v*1000;const d=Date.parse(v);return isNaN(d)?null:d}
 const tz='Asia/Bangkok';
 function dayKey(ms){return new Date(ms).toLocaleDateString('en-CA',{timeZone:tz})}
-function dayLabel(ms){const k=dayKey(ms);if(k===dayKey(Date.now()))return 'วันนี้';if(k===dayKey(Date.now()-864e5))return 'เมื่อวาน';return new Date(ms).toLocaleDateString('th-TH',{timeZone:tz,day:'numeric',month:'short',year:'numeric'})}
+// Like LINE: วันนี้, เมื่อวาน, or 17 พ.ย. (อ.) (with the year when not this year).
+function dayLabel(ms){const k=dayKey(ms);if(k===dayKey(Date.now()))return 'วันนี้';if(k===dayKey(Date.now()-864e5))return 'เมื่อวาน';
+  const d=new Date(ms),o={timeZone:tz,calendar:'gregory'};
+  const dm=d.toLocaleDateString('th-TH',{...o,day:'numeric',month:'short'}),wd={Sun:'อา.',Mon:'จ.',Tue:'อ.',Wed:'พ.',Thu:'พฤ.',Fri:'ศ.',Sat:'ส.'}[d.toLocaleDateString('en-US',{timeZone:tz,weekday:'short'})]||'';
+  const y=d.toLocaleDateString('en-CA',{timeZone:tz,year:'numeric'}),thisYear=new Date().toLocaleDateString('en-CA',{timeZone:tz,year:'numeric'});
+  return dm+(y!==thisYear?' '+y:'')+' ('+wd+')'}
 function hm(ms){return new Date(ms).toLocaleTimeString('th-TH',{timeZone:tz,hour:'2-digit',minute:'2-digit',hour12:false})}
 function listTime(ms){if(ms==null)return '';return dayKey(ms)===dayKey(Date.now())?hm(ms):new Date(ms).toLocaleDateString('th-TH',{timeZone:tz,day:'numeric',month:'short'})}
 
@@ -463,7 +468,7 @@ function updateChat(){
   if(c&&S.chat&&S.chat.els)S.chat.els.title.replaceChildren(c.customer||'แชท');
   refreshSend();
   if(!S.chat||S.chat.loading||S.chat.fetching)return;
-  const last=maxSeq(S.chat.messages);
+  const last=Math.max(maxSeq(S.chat.messages),S.chat.checked||0);
   const m=c&&c.messages&&c.messages[0];
   if(m&&m.sequence!=null&&m.sequence<=last&&(c.unread_count||0)===0)return;
   fetchNew();
@@ -472,12 +477,15 @@ async function fetchNew(){
   const ch=S.chat;if(!ch||ch.fetching)return;ch.fetching=true;
   try{
     for(let i=0;i<5;i++){
-      const last=maxSeq(ch.messages);
+      const last=Math.max(maxSeq(ch.messages),ch.checked||0);
       const p=await rpc('inbox_message_page',{p_id:ch.id,p_after:last});
+      ch.checked=Math.max(last,maxSeq(p.messages));
       if(S.chat!==ch)return;
       if(!p.messages.length)break;
       const seen=new Set(ch.messages.map(x=>x.id));
-      const fresh=p.messages.filter(x=>!seen.has(x.id));
+      // Older (by time) than what is shown: left for "load older", which pages by time, so there is no gap.
+      const first=ch.hasMore&&ch.messages.length?ts(earliestByTime(ch.messages).created):null;
+      const fresh=p.messages.filter(x=>!seen.has(x.id)&&(first==null||(ts(x.created)||0)>=first));
       ch.messages.push(...fresh);
       drawMessages(false);
       if(!p.has_more)break;
@@ -489,7 +497,7 @@ async function fetchNew(){
 let lastRead=null;
 function markRead(){
   const c=conv(S.open);if(!c||!S.chat||!S.chat.messages.length)return;
-  const cursor=maxSeq(S.chat.messages);
+  const cursor=Math.max(maxSeq(S.chat.messages),S.chat.checked||0);
   if(!(c.unread_count>0)&&c.read_cursor!=null&&c.read_cursor>=cursor)return;
   if(lastRead===S.open+':'+cursor)return;lastRead=S.open+':'+cursor;
   api('/v1/read',{id:S.open,cursor}).then(()=>{c.unread_count=0;updateTitle()}).catch(()=>{lastRead=null});
