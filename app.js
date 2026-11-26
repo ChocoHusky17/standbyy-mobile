@@ -58,9 +58,12 @@ async function ensureFresh(){
   if(!refreshing)refreshing=post(API+'/v1/refresh',{refreshToken:s.refreshToken}).then(n=>{saveSession(Object.assign({},s,n))}).catch(e=>{if(e.status===401||e.status===400||e.status===403)throw new ApiError(401,'การเข้าสู่ระบบหมดอายุ');throw e}).finally(()=>{refreshing=null});
   await refreshing;
 }
+// A sign-in that has ended (8 hours, or signed out elsewhere) must send the phone back to the
+// sign-in page. That covers a refused token refresh too, and the database's "session expired" (403).
+const signInEnded=e=>e&&(e.status===401||(e.status===403&&/session expired/i.test(e.message||'')));
 async function authed(fn){
-  await ensureFresh();
-  try{return await fn()}catch(e){if(e.status===401){logout(true);throw e}throw e}
+  try{await ensureFresh();return await fn()}
+  catch(e){if(signInEnded(e)&&S.session){logout(true);throw new ApiError(401,e.message)}throw e}
 }
 function rpc(name,body){return authed(()=>post(SB+'/rest/v1/rpc/'+name,body,{apikey:S.session.publicKey,Authorization:'Bearer '+S.session.token}))}
 function api(path,body){return authed(()=>post(API+path,body,{Authorization:'Bearer '+S.session.token}))}
